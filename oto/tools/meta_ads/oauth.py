@@ -19,6 +19,7 @@ from typing import Optional
 from urllib.parse import urlencode
 
 import requests
+from ..http.client import refuse_redirect
 
 from . import _transport
 from .config import DIALOG_URL, GRAPH_API_BASE, HTTP_TIMEOUT, TOKEN_URL, MetaAdsApp
@@ -72,7 +73,8 @@ def connect(app: MetaAdsApp, code: str, redirect_uri: str,
         "client_secret": app.app_secret,
         "redirect_uri": redirect_uri,
         "code": code,
-    }, timeout=HTTP_TIMEOUT)
+    }, timeout=HTTP_TIMEOUT, allow_redirects=False)
+    refuse_redirect(r)  # a 307/308 would replay the secret to another host
     if r.status_code != 200:
         _transport.refus_de_consentement(r, "the authorization code exchange")
     echange = _transport.corps(r) or {}

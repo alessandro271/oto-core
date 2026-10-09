@@ -266,3 +266,26 @@ def test_remaining_quota_is_exposed(monkeypatch):
     c = _client()
     c.list_records("companies")
     assert c.last_quota == {"minute": 42, "day": 1000}
+
+
+def test_une_307_du_serveur_de_jetons_n_emporte_pas_le_secret(monkeypatch):
+    """Un 307/308 rejouerait le corps (client_secret) vers l'hôte du `Location` :
+    la réponse 3xx est refusée, jamais suivie, et rien ne part vers l'API."""
+    from oto.tools.http import RedirectRefused
+    seen = {"api": 0}
+
+    def fake_post(self, url, **kwargs):
+        seen["kw"] = kwargs
+        return _Resp(307, None, headers={"Location": "https://ailleurs.test/token?client_secret=SECRET#f"})
+
+    def fake_request(self, method, url, **kwargs):
+        seen["api"] += 1
+        return _Resp(200, {"data": []})
+
+    monkeypatch.setattr(sc.requests.Session, "post", fake_post)
+    monkeypatch.setattr(sc.requests.Session, "request", fake_request)
+    with pytest.raises(RedirectRefused) as e:
+        _client().list_records("companies")
+    assert seen["kw"]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/token"
+    assert "SECRET" not in str(e.value) and seen["api"] == 0

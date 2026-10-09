@@ -159,3 +159,18 @@ def test_consentement_admin_sans_scopes_oidc_et_en_uri():
 def test_consentement_admin_sans_permission_graph_refuse():
     with pytest.raises(ValueError, match="scopes"):
         ms_auth.admin_consent_url(CID, REDIRECT, "s", scopes=("offline_access", "openid"))
+
+
+def test_une_307_du_serveur_de_jetons_n_emporte_pas_le_secret(token_calls):
+    """Un 307/308 rejouerait le corps (client_secret, code ou refresh_token) vers
+    l'hôte du `Location` : la réponse 3xx est refusée, jamais suivie."""
+    from oto.tools.http import RedirectRefused
+    r = _Resp(None, status_code=307)
+    r.headers = {"Location": "https://ailleurs.test/token?client_secret=SECRET#f"}
+    token_calls.responses.append(r)
+    with pytest.raises(RedirectRefused) as e:
+        ms_auth.refresh(CID, SECRET, "RT1")
+    assert token_calls[0]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/token"
+    assert SECRET not in str(e.value) and "SECRET" not in str(e.value)
+    assert len(token_calls) == 1

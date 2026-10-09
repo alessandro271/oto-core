@@ -29,6 +29,7 @@ from urllib.parse import urlencode
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 
 _HTTP_TIMEOUT = (10, 30)  # (connect, read)
 HOST = "https://ubersuggest-mcp.neilpatelapi.com"
@@ -112,8 +113,11 @@ def authorize_url(client_id: str, redirect_uri: str, state: str, code_challenge:
 
 
 def _token(data: dict) -> Grant:
+    # Never follow a redirect: a 307/308 would replay the body — code or refresh
+    # token — to the host named by `Location`.
     resp = requests.post(TOKEN_URL, data=data, timeout=_HTTP_TIMEOUT,
-                         headers={"Accept": "application/json"})
+                         headers={"Accept": "application/json"}, allow_redirects=False)
+    refuse_redirect(resp)
     try:
         payload = resp.json()
     except ValueError:

@@ -60,7 +60,8 @@ class _Session:
     def _suivante(self, methode, url, params=None, data=None, timeout=None, **kw):
         self.calls.append({"method": methode, "url": url,
                            "params": dict(params or {}), "data": dict(data or {}),
-                           "timeout": timeout})
+                           "timeout": timeout,
+                           "allow_redirects": kw.get("allow_redirects")})
         if not self.reponses:
             raise AssertionError(f"appel non prévu : {methode} {url}")
         suite = self.reponses.pop(0)
@@ -389,3 +390,33 @@ def test_une_redirection_est_refusee_jamais_suivie():
     assert e.value.location == "https://ailleurs.test/v1/x"
     assert "SECRET" not in str(e.value)
     assert len(vus) == 1
+
+
+# ── Redirections ─────────────────────────────────────────────────────────────
+
+def _r307():
+    r = _Resp(None, 307)
+    r.headers = {"Location": "https://ailleurs.test/token?client_secret=SECRET#f"}
+    return r
+
+
+def test_connect_refuse_une_307_qui_emporterait_le_secret():
+    """L'échange du code envoie le secret dans le corps : un 307/308 le rejouerait
+    vers l'hôte du `Location`. Refusé, jamais suivi, et rien d'autre ne part."""
+    from oto.tools.http import RedirectRefused
+    s = _Session(_r307())
+    with pytest.raises(RedirectRefused) as e:
+        ig_oauth.connect(APP, "le-code", "https://exemple.test/retour", session=s)
+    assert s.calls[0]["allow_redirects"] is False and len(s.calls) == 1
+    assert e.value.location == "https://ailleurs.test/token"
+    assert "SECRET" not in str(e.value) and "secret-de-test" not in str(e.value)
+
+
+def test_renouvellement_refuse_une_307_qui_emporterait_le_jeton():
+    """Le jeton est dans la query de ce GET : une 3xx suivie l'aurait remis à un
+    autre hôte."""
+    from oto.tools.http import RedirectRefused
+    s = _Session(_r307())
+    with pytest.raises(RedirectRefused):
+        ig_tokens.refresh_long_lived("jeton-long", session=s)
+    assert s.calls[0]["allow_redirects"] is False and len(s.calls) == 1

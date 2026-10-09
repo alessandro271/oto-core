@@ -253,3 +253,26 @@ def test_create_note_creates_contentnote_then_links_it(c, monkeypatch):
         "ContentDocumentId": "069AAA", "LinkedEntityId": "003xx",
         "ShareType": "V", "Visibility": "AllUsers",
     }
+
+
+def test_une_307_du_serveur_de_jetons_n_emporte_pas_le_secret(monkeypatch):
+    """Un 307/308 rejouerait le corps (client_secret, refresh_token) vers l'hôte du
+    `Location` : la réponse 3xx est refusée, jamais suivie."""
+    from oto.tools.http import RedirectRefused
+    # Des credentials à part : le cache de jeton est partagé par tout le processus.
+    c = SalesforceClient(client_id="cid", client_secret="csecret",
+                         refresh_token="rtok-redirection", login_url=LOGIN)
+    seen = {}
+    r = _Resp(None, status_code=307)
+    r.headers = {"Location": "https://ailleurs.test/token?client_secret=SECRET#f"}
+
+    def fake_post(*a, **k):
+        seen["kw"] = k
+        return r
+
+    monkeypatch.setattr(sf_client.requests, "post", fake_post)
+    with pytest.raises(RedirectRefused) as e:
+        c._get_access_token()
+    assert seen["kw"]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/token"
+    assert "SECRET" not in str(e.value)

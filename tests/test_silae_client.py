@@ -46,7 +46,7 @@ class _Session:
 
     def post(self, url, data=None, headers=None, timeout=None, **kw):
         assert "params" not in kw, "a secret never goes in the query string"
-        self.tokens.append({"url": url, "data": data})
+        self.tokens.append({"url": url, "data": data, "kw": kw})
         return self.token
 
     def request(self, method, url, json=None, params=None, headers=None, timeout=None, **kw):
@@ -453,3 +453,18 @@ def test_une_redirection_est_refusee_jamais_suivie(monkeypatch):
     assert e.value.location == "https://ailleurs.test/v1/x"
     assert "SECRET" not in str(e.value)
     assert len(vus) == 1
+
+
+def test_une_307_du_serveur_de_jetons_n_emporte_pas_le_secret():
+    """Un 307/308 rejouerait le corps (client_secret) vers l'hôte du `Location` :
+    la réponse 3xx est refusée, jamais suivie."""
+    from oto.tools.http import RedirectRefused
+    r = _Resp(None, status_code=307)
+    r.headers = {"Location": "https://ailleurs.test/token?client_secret=SECRET#f"}
+    c = _client(token=r)
+    with pytest.raises(RedirectRefused) as e:
+        c.list_dossiers()
+    assert c.session.tokens[0]["kw"]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/token"
+    assert "SECRET" not in str(e.value)
+    assert c.session.appels == []          # rien n'est parti vers l'API

@@ -17,6 +17,7 @@ from typing import Optional
 import requests
 
 from ..common import UpstreamHTTPError
+from ..http.client import refuse_redirect
 
 AUTH_URL = "https://payroll-api-auth.silae.fr/oauth2/v2.0/token"
 #: Fixed scope of the payroll API, given by the Silae authentication page.
@@ -65,7 +66,9 @@ def _demander(session: requests.Session, client_id: str, client_secret: str) -> 
         },
         headers={"Content-Type": "application/x-www-form-urlencoded"},
         timeout=_HTTP_TIMEOUT,
+        allow_redirects=False,  # a 307/308 would replay the secret to another host
     )
+    refuse_redirect(resp)
     payload = _json(resp)
     error = payload.get("error") if payload else None
     if resp.status_code >= 400:

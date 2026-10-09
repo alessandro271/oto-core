@@ -36,6 +36,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import raise_for_upstream
+from ..http.client import refuse_redirect
 
 # Per-process shared tokens: {hash(id+secret): (token, expires_at)}. The hash
 # is the key — without the plaintext secret, one cannot pick up another
@@ -92,7 +93,9 @@ class SellsyClient:
                 "client_secret": self.client_secret,
             },
             timeout=self.timeout,
+            allow_redirects=False,  # a 307/308 would replay the secret to another host
         )
+        refuse_redirect(resp)
         raise_for_upstream(resp, service="sellsy")
         data = resp.json()
         token = data.get("access_token")

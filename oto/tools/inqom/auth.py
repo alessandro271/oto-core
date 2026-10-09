@@ -20,6 +20,7 @@ from typing import Optional
 import requests
 
 from ..common import UpstreamHTTPError
+from ..http.client import refuse_redirect
 
 _HTTP_TIMEOUT = (10, 30)
 
@@ -67,7 +68,9 @@ def get_access_token(token_url: str, *, client_id: str, client_secret: str,
             "scope": scope,
         },
         timeout=_HTTP_TIMEOUT,
+        allow_redirects=False,  # a 307/308 would replay the secret to another host
     )
+    refuse_redirect(resp)
 
     try:
         payload = resp.json()

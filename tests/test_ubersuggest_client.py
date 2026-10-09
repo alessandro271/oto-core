@@ -304,3 +304,16 @@ def test_session_reprise_sans_poignee_de_main(mcp):
     assert c.call("keyword_lists") == []
     assert [x["body"].get("method") for x in mcp] == ["tools/call"]
     assert mcp[0]["headers"]["Mcp-Session-Id"] == "S0" and c.session_id == "S0"
+
+
+def test_une_307_du_serveur_de_jetons_n_emporte_pas_le_secret(token_calls):
+    """Un 307/308 rejouerait le corps (code ou refresh_token) vers l'hôte du
+    `Location` : la réponse 3xx est refusée, jamais suivie."""
+    from oto.tools.http import RedirectRefused
+    token_calls.responses.append(_Resp(None, status_code=307,
+                                       headers={"Location": "https://ailleurs.test/token?client_secret=SECRET#f"}))
+    with pytest.raises(RedirectRefused) as e:
+        ub_auth.refresh("cid", "RT1")
+    assert token_calls[0]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/token"
+    assert "SECRET" not in str(e.value) and len(token_calls) == 1

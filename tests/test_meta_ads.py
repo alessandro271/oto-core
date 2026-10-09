@@ -47,17 +47,21 @@ class _Session:
         self.reponses = list(reponses)
         self.calls: list[dict] = []
 
-    def _next(self, method, url, params=None, data=None, headers=None, timeout=None):
+    def _next(self, method, url, params=None, data=None, headers=None, timeout=None,
+              **kw):
         self.calls.append({"method": method, "url": url, "params": params or {},
                            "data": data or {}, "headers": headers or {},
-                           "timeout": timeout})
+                           "timeout": timeout,
+                           "allow_redirects": kw.get("allow_redirects")})
         return self.reponses.pop(0)
 
-    def get(self, url, params=None, headers=None, timeout=None):
-        return self._next("GET", url, params=params, headers=headers, timeout=timeout)
+    def get(self, url, params=None, headers=None, timeout=None, **kw):
+        return self._next("GET", url, params=params, headers=headers, timeout=timeout,
+                          **kw)
 
-    def post(self, url, data=None, headers=None, timeout=None):
-        return self._next("POST", url, data=data, headers=headers, timeout=timeout)
+    def post(self, url, data=None, headers=None, timeout=None, **kw):
+        return self._next("POST", url, data=data, headers=headers, timeout=timeout,
+                          **kw)
 
 
 def _err(code, message="boom", subcode=None, status=400):
@@ -270,3 +274,17 @@ def test_error_never_carries_token_or_url():
     with pytest.raises(MetaAdsApiError) as e:
         MetaAdsClient("tok", session=s).get_object("1")
     assert "access_token" not in str(e.value) and "graph" not in str(e.value)
+
+
+def test_connect_refuse_une_307_qui_emporterait_le_secret():
+    """L'échange du code envoie le secret dans le corps : un 307/308 le rejouerait
+    vers l'hôte du `Location`. Refusé, jamais suivi, et rien d'autre ne part."""
+    from oto.tools.http import RedirectRefused
+    r = _Resp(None, 307)
+    r.headers = {"Location": "https://ailleurs.test/token?client_secret=SECRET#f"}
+    s = _Session(r)
+    with pytest.raises(RedirectRefused) as e:
+        connect(APP, "c", "https://oto.test/cb", session=s)
+    assert s.calls[0]["allow_redirects"] is False and len(s.calls) == 1
+    assert e.value.location == "https://ailleurs.test/token"
+    assert "SECRET" not in str(e.value) and "secret-test" not in str(e.value)

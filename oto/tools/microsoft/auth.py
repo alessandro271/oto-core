@@ -37,6 +37,7 @@ from urllib.parse import urlencode
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 from . import scopes as _scopes
 
 _HTTP_TIMEOUT = (10, 30)  # (connect, read)
@@ -157,7 +158,11 @@ def admin_consent_url(client_id: str, redirect_uri: str, state: str, *,
 
 
 def _token(data: dict, tenant: str) -> Grant:
-    resp = requests.post(f"{_authority(tenant)}/token", data=data, timeout=_HTTP_TIMEOUT)
+    # Never follow a redirect: a 307/308 would replay the body — client secret, code or
+    # refresh token — to the host named by `Location`.
+    resp = requests.post(f"{_authority(tenant)}/token", data=data, timeout=_HTTP_TIMEOUT,
+                         allow_redirects=False)
+    refuse_redirect(resp)
     try:
         payload = resp.json()
     except ValueError:

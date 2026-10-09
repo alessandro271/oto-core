@@ -31,6 +31,7 @@ import time
 from typing import Callable, Optional
 
 import requests
+from ..http.client import refuse_redirect
 
 # {cred_key: (access_token, expires_at_epoch)}
 _TOKEN_CACHE: dict[str, tuple[str, float]] = {}
@@ -107,7 +108,9 @@ def get_access_token(accounts_url: str, client_id: str, client_secret: str,
             "refresh_token": refresh_token,
         },
         timeout=30,
+        allow_redirects=False,  # a 307/308 would replay the secrets to another host
     )
+    refuse_redirect(resp)
 
     # No `raise_for_status()`: its message embeds the request URL.
     if resp.status_code >= 400:

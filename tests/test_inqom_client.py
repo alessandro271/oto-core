@@ -45,7 +45,7 @@ def token(monkeypatch):
     calls, replies = [], []
 
     def fake_post(url, data=None, params=None, timeout=None, **kw):
-        calls.append({"url": url, "data": data, "params": params})
+        calls.append({"url": url, "data": data, "params": params, "kw": kw})
         if replies:
             return replies.pop(0)
         return _Resp({"access_token": f"tok-{len(calls)}", "expires_in": 3600,
@@ -224,3 +224,22 @@ def test_un_choix_hors_liste_est_refuse(c, token, api):
     with pytest.raises(ValueError, match="page_number"):
         c.list_entry_lines(12, "2026-01-01", "2026-01-31", 0)
     assert api[0] == []
+
+
+# --- redirections -----------------------------------------------------------
+
+def test_une_307_du_serveur_de_jetons_n_emporte_pas_le_secret(token):
+    """Un 307/308 rejouerait le corps (client_secret, mot de passe) vers l'hôte du
+    `Location` : la réponse 3xx est refusée, jamais suivie."""
+    from oto.tools.http import RedirectRefused
+    calls, replies = token
+    r = _Resp(None, status_code=307)
+    r.headers = {"Location": "https://ailleurs.test/token?client_secret=SECRET#f"}
+    replies.append(r)
+    with pytest.raises(RedirectRefused) as e:
+        inqom_auth.get_access_token("https://auth.exemple.fr/token", client_id="app",
+                                    client_secret="app-secret", username="u",
+                                    password="pw", scope="s")
+    assert calls[0]["kw"]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/token"
+    assert "SECRET" not in str(e.value) and len(calls) == 1

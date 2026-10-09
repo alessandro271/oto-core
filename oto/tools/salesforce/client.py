@@ -9,6 +9,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import raise_for_upstream
+from ..http.client import refuse_redirect
 
 _HTTP_TIMEOUT = (10, 60)  # (connect, read) — never wait indefinitely
 
@@ -120,7 +121,9 @@ class SalesforceClient:
                 "refresh_token": self.refresh_token,
             },
             timeout=_HTTP_TIMEOUT,
+            allow_redirects=False,  # a 307/308 would replay the secrets to another host
         )
+        refuse_redirect(resp)
         # Salesforce follows standard OAuth2 (RFC 6749 §5.2): an auth refusal
         # (invalid_grant/invalid_client) returns HTTP 400 with the error in the
         # body — UNLIKE Zoho which returns 200 (see ZohoClient). The body is

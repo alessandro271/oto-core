@@ -24,6 +24,7 @@ from typing import Any, Optional
 from urllib.parse import urlencode
 
 import requests
+from ..http.client import refuse_redirect
 
 from . import _transport
 from .config import (
@@ -125,7 +126,8 @@ def connect(app: InstagramApp, code: str, redirect_uri: str,
         "grant_type": "authorization_code",
         "redirect_uri": redirect_uri,
         "code": code,
-    }, timeout=HTTP_TIMEOUT)
+    }, timeout=HTTP_TIMEOUT, allow_redirects=False)
+    refuse_redirect(r)  # a 307/308 would replay the secret to another host
     if r.status_code != 200:
         _transport.refus_de_consentement(r, "the authorization code exchange")
     jeton_court, _ = parse_token_exchange(r.json())
@@ -139,7 +141,8 @@ def connect(app: InstagramApp, code: str, redirect_uri: str,
         "grant_type": "ig_exchange_token",
         "client_secret": app.app_secret,
         "access_token": jeton_court,
-    }, timeout=HTTP_TIMEOUT)
+    }, timeout=HTTP_TIMEOUT, allow_redirects=False)
+    refuse_redirect(r)  # the secret is in the query here: never let it follow a 3xx
     if r.status_code != 200:
         _transport.refus_de_consentement(r, "the switch to a long-lived authorization")
     long = r.json()

@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
+from ..http.client import refuse_redirect
 
 from . import _transport
 from .config import (
@@ -124,7 +125,8 @@ def refresh_long_lived(access_token: str, *,
     r = http.get(f"{GRAPH_ROOT}/refresh_access_token", params={
         "grant_type": "ig_refresh_token",
         "access_token": access_token,
-    }, timeout=HTTP_TIMEOUT)
+    }, timeout=HTTP_TIMEOUT, allow_redirects=False)
+    refuse_redirect(r)  # the token is in the query: never let it follow a 3xx
     charge = _transport.lire(r, "renewing the authorization",
                              expires_at=expires_at)
     jeton = charge.get("access_token")
