@@ -15,6 +15,7 @@ from .client import (
     StaticBearer,
     UpstreamAuth,
     build_auth,
+    refuse_redirect,
 )
 
 __all__ = [
@@ -29,4 +30,5 @@ __all__ = [
     "StaticBearer",
     "UpstreamAuth",
     "build_auth",
+    "refuse_redirect",
 ]

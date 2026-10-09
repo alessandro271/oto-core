@@ -28,6 +28,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import FieldFilter, raise_for_upstream
+from ..http.client import refuse_redirect
 
 # Entities served by the v2 API with generic CRUD (path = the name itself).
 V2_ENTITIES = ("deals", "persons", "organizations", "activities", "products",
@@ -86,7 +87,9 @@ class PipedriveClient:
 
     def _request(self, method: str, version: str, path: str, **kwargs) -> Any:
         resp = self.session.request(
-            method, self._url(version, path), timeout=30, **kwargs)
+            method, self._url(version, path), timeout=30, allow_redirects=False,
+            **kwargs)
+        refuse_redirect(resp)
         raise_for_upstream(resp, service="pipedrive")
         if not resp.content:
             return {}

@@ -24,6 +24,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import raise_for_upstream
+from ..http.client import refuse_redirect
 
 
 class ZapierClient:
@@ -47,7 +48,9 @@ class ZapierClient:
 
     def _request(self, method: str, path: str, **kwargs) -> Any:
         url = f"{self.BASE_URL}{path}"
-        resp = self.session.request(method, url, timeout=60, **kwargs)
+        resp = self.session.request(method, url, timeout=60, allow_redirects=False,
+                                    **kwargs)
+        refuse_redirect(resp)
         raise_for_upstream(resp, service="zapier")
         return resp.json() if resp.content else {}
 

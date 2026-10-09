@@ -14,6 +14,7 @@ from typing import Optional, List, Dict, Any
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 
 # Pricing per million tokens (USD) — updated 2026-02
 MODEL_PRICING = {
@@ -97,7 +98,9 @@ class AnthropicAdminClient:
             headers=self._headers(),
             params=params,
             timeout=30,
+            allow_redirects=False,
         )
+        refuse_redirect(resp)
         if not resp.ok:
             raise Exception(f"Anthropic Admin API error: {resp.status_code} {resp.text}")
         return resp.json()

@@ -119,6 +119,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import raise_for_upstream
+from ..http.client import refuse_redirect
 
 
 def _clean(**kwargs) -> Dict[str, Any]:
@@ -168,8 +169,9 @@ class PromptWatchClient:
         url = f"{self.BASE_URL}/{endpoint.lstrip('/')}"
         resp = requests.request(
             method, url, headers=self._headers(), params=params, json=json,
-            timeout=self.TIMEOUT,
+            timeout=self.TIMEOUT, allow_redirects=False,
         )
+        refuse_redirect(resp)
         raise_for_upstream(resp, service="promptwatch")
         return resp.json() if resp.content else {}
 

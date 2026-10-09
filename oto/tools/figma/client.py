@@ -14,6 +14,7 @@ import requests
 
 from ..common.local_dirs import get_cache_dir
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 
 _HTTP_TIMEOUT = (10, 60)  # (connect, read) — never an unbounded wait
 
@@ -103,8 +104,11 @@ class FigmaClient:
             url=url,
             headers=self.headers,
             params=params,
-            json=data
-        , timeout=_HTTP_TIMEOUT)
+            json=data,
+            timeout=_HTTP_TIMEOUT,
+            allow_redirects=False,
+        )
+        refuse_redirect(response)
         response.raise_for_status()
         result = response.json()
 

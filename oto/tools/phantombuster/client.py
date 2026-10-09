@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 
 _HTTP_TIMEOUT = (10, 60)  # (connect, read) — never an unbounded wait
 
@@ -48,7 +49,9 @@ class PhantombusterClient:
         url = f"{self.BASE_URL}/{endpoint}"
         headers = {"X-Phantombuster-Key": self.api_key}
 
-        response = requests.request(method, url, headers=headers, timeout=_HTTP_TIMEOUT, **kwargs)
+        response = requests.request(method, url, headers=headers, timeout=_HTTP_TIMEOUT,
+                                    allow_redirects=False, **kwargs)
+        refuse_redirect(response)
         response.raise_for_status()
         return response.json()
 

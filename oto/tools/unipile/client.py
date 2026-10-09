@@ -56,6 +56,7 @@ from urllib.parse import quote
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 from ._api import (
     _AccountsMixin,
     _ContentMixin,
@@ -212,12 +213,13 @@ class UnipileClient(
         try:
             resp = self.session.request(
                 method, url, params=params, json=json,
-                timeout=timeout or _REQUEST_TIMEOUT)
+                timeout=timeout or _REQUEST_TIMEOUT, allow_redirects=False)
         except requests.RequestException as e:
             # DNS/timeout/reset: stable error instead of leaking net::ERR_* (#177).
             raise UnipileError(
                 self._sanitize(f"Unipile: network error ({type(e).__name__}).")
             ) from e
+        refuse_redirect(resp)
         if resp.status_code >= 400:
             try:
                 body = resp.json()

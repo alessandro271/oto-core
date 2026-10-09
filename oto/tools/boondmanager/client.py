@@ -48,6 +48,7 @@ import requests
 
 from ..common import raise_for_upstream
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 from ._spec import (ENTITIES, KEYWORD_PREFIXES, KEYWORDS_TYPES, MAX_RESULTS,
                     PERIODS, REQUIRED_ATTRIBUTES, REQUIRED_RELATIONSHIPS,
                     RETURN_MORE_DATA, SEARCH_FILTERS, SORTS, check_attributes,
@@ -223,9 +224,11 @@ class BoondManagerClient:
         url = f"{self.BASE_URL}{path}"
 
         def send():
-            return self.session.request(method, url, params=clean or None,
+            resp = self.session.request(method, url, params=clean or None,
                                         json=body, headers=self._headers(),
-                                        timeout=_HTTP_TIMEOUT)
+                                        timeout=_HTTP_TIMEOUT, allow_redirects=False)
+            refuse_redirect(resp)
+            return resp
 
         resp = send()
         if resp.status_code == 429 and method == "GET":

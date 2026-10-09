@@ -76,6 +76,7 @@ import requests
 from ..common import raise_for_upstream
 from ..common.credentials import require
 from ..common.errors import UpstreamHTTPError
+from ..http.client import refuse_redirect
 
 # (connect, read) — never an unbounded wait.
 HTTP_TIMEOUT = (10, 60)
@@ -278,7 +279,8 @@ class ClaapClient:
         for attempt in range(MAX_ATTEMPTS):
             last = self.session.request(
                 method, f"{self.BASE_URL}{path}", params=params or None,
-                json=json, timeout=HTTP_TIMEOUT)
+                json=json, timeout=HTTP_TIMEOUT, allow_redirects=False)
+            refuse_redirect(last)
             if (last.status_code not in RETRY_STATUSES
                     or not retryable or attempt == MAX_ATTEMPTS - 1):
                 break

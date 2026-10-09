@@ -207,3 +207,39 @@ def test_upstream_error_raises_typed_exception(monkeypatch):
     with pytest.raises(UpstreamHTTPError) as exc_info:
         _client().get_current_user()
     assert exc_info.value.status_code == 401
+
+
+class _Redirige:
+    """Une 3xx vers un autre hôte, dont le `Location` garde la clé en query."""
+    status_code = 302
+    headers = {"Location": "https://ailleurs.test/v1/x?api_key=SECRET#f"}
+    content = b""
+    text = ""
+    ok = False
+
+    def json(self):
+        return {}
+
+    def raise_for_status(self):
+        return None
+
+
+def test_une_redirection_est_refusee_jamais_suivie(monkeypatch):
+    """La clé part dans un en-tête maison que `requests` ne retire pas sur un changement
+    d'hôte : une 3xx est refusée (`RedirectRefused`), jamais suivie ni retentée, et
+    sa cible est réduite à schéma, hôte et chemin — jamais sa query."""
+    from oto.tools.http.client import RedirectRefused
+    vus = []
+
+    def fake(method, url, **kw):
+        vus.append(kw)
+        return _Redirige()
+
+    c = fc.ForagerClient(api_key="k", account_id=1)
+    monkeypatch.setattr(fc.requests, "request", fake)
+    with pytest.raises(RedirectRefused) as e:
+        c.get_current_user()
+    assert vus[0]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/v1/x"
+    assert "SECRET" not in str(e.value)
+    assert len(vus) == 1

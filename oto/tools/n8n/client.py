@@ -21,6 +21,7 @@ from typing import Any, Dict, Optional
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 
 
 class N8nClient:
@@ -50,7 +51,9 @@ class N8nClient:
 
     def _request(self, method: str, path: str, **kwargs) -> Any:
         url = f"{self.base_url}/api/v1{path}"
-        resp = self.session.request(method, url, timeout=30, **kwargs)
+        resp = self.session.request(method, url, timeout=30, allow_redirects=False,
+                                    **kwargs)
+        refuse_redirect(resp)
         if resp.status_code >= 400:
             try:
                 body = resp.json()

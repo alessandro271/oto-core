@@ -20,6 +20,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import raise_for_upstream
+from ..http.client import refuse_redirect
 
 # Documented batch cap (exceeding it → the API rejects the whole request).
 MAX_CONTACTS_PER_BATCH = 250
@@ -90,7 +91,9 @@ class DropcontactClient:
             headers=self._headers(),
             json=payload,
             timeout=30,
+            allow_redirects=False,
         )
+        refuse_redirect(resp)
         raise_for_upstream(resp, service="dropcontact")
         body = resp.json()
         if not body.get("request_id"):
@@ -121,7 +124,9 @@ class DropcontactClient:
             headers=self._headers(),
             params=params,
             timeout=30,
+            allow_redirects=False,
         )
+        refuse_redirect(resp)
         raise_for_upstream(resp, service="dropcontact")
         body = resp.json()
 

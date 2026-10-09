@@ -77,3 +77,39 @@ def test_422_is_typed(capture):
     with pytest.raises(UpstreamHTTPError) as e:
         _client().get_occupation("99-9999.00")
     assert e.value.status_code == 422 and e.value.service == "onet"
+
+
+class _Redirige:
+    """Une 3xx vers un autre hôte, dont le `Location` garde la clé en query."""
+    status_code = 302
+    headers = {"Location": "https://ailleurs.test/v1/x?api_key=SECRET#f"}
+    content = b""
+    text = ""
+    ok = False
+
+    def json(self):
+        return {}
+
+    def raise_for_status(self):
+        return None
+
+
+def test_une_redirection_est_refusee_jamais_suivie(monkeypatch):
+    """La clé part dans un en-tête maison que `requests` ne retire pas sur un changement
+    d'hôte : une 3xx est refusée (`RedirectRefused`), jamais suivie ni retentée, et
+    sa cible est réduite à schéma, hôte et chemin — jamais sa query."""
+    from oto.tools.http.client import RedirectRefused
+    vus = []
+
+    def fake(url, **kw):
+        vus.append(kw)
+        return _Redirige()
+
+    c = onet.ONetClient(api_key="k")
+    c.session.get = fake
+    with pytest.raises(RedirectRefused) as e:
+        c.get_occupation("15-1299.08")
+    assert vus[0]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/v1/x"
+    assert "SECRET" not in str(e.value)
+    assert len(vus) == 1

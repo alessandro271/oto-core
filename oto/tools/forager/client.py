@@ -54,6 +54,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import raise_for_upstream
+from ..http.client import refuse_redirect
 
 _HTTP_TIMEOUT = (10, 60)  # (connect, read) — never wait indefinitely
 
@@ -70,8 +71,9 @@ class ForagerClient:
 
     def _request(self, method: str, path: str, *, json: Any = None, params: Dict = None) -> Any:
         resp = requests.request(
-            method, f"{self.BASE_URL}{path}", headers=self._headers(), json=json, params=params
-        , timeout=_HTTP_TIMEOUT)
+            method, f"{self.BASE_URL}{path}", headers=self._headers(), json=json,
+            params=params, timeout=_HTTP_TIMEOUT, allow_redirects=False)
+        refuse_redirect(resp)
         raise_for_upstream(resp, service="forager")
         return resp.json() if resp.content else None
 

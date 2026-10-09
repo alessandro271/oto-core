@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 
 _HTTP_TIMEOUT = (10, 60)  # (connect, read) — never wait indefinitely
 
@@ -97,7 +98,9 @@ class ApolloClient:
         for essai in range(self._RETRY_MAX + 1):
             self._rate_limit()
             response = requests.request(method, url, headers=headers,
-                                        timeout=_HTTP_TIMEOUT, **kwargs)
+                                        timeout=_HTTP_TIMEOUT, allow_redirects=False,
+                                        **kwargs)
+            refuse_redirect(response)
             if response.status_code != 429 or essai == self._RETRY_MAX:
                 return response
             try:

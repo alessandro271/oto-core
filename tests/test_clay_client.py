@@ -105,3 +105,60 @@ def test_parse_curl_colle_dans_un_champ_une_ligne(glue):
     cmd = (f"curl -X POST '{HOOK}'{glue}-H 'Content-Type: application/json'{glue}"
            f"-H 'x-clay-webhook-auth: tok'{glue}-d '{{\"a\": 1}}'")
     assert parse_curl(cmd) == {"webhook_url": HOOK, "auth_token": "tok"}
+
+
+class _Redirige:
+    """Une 3xx vers un autre hôte, dont le `Location` garde la clé en query."""
+    status_code = 302
+    headers = {"Location": "https://ailleurs.test/v1/x?api_key=SECRET#f"}
+    content = b""
+    text = ""
+    ok = False
+
+    def json(self):
+        return {}
+
+    def raise_for_status(self):
+        return None
+
+
+def test_une_redirection_est_refusee_jamais_suivie(monkeypatch):
+    """La clé part dans un en-tête maison que `requests` ne retire pas sur un changement
+    d'hôte : une 3xx est refusée (`RedirectRefused`), jamais suivie ni retentée, et
+    sa cible est réduite à schéma, hôte et chemin — jamais sa query."""
+    from oto.tools.http.client import RedirectRefused
+    vus = []
+
+    def fake(method, url, **kw):
+        vus.append(kw)
+        return _Redirige()
+
+    c = ClayClient(api_key="k")
+    c.session.request = fake
+    with pytest.raises(RedirectRefused) as e:
+        c.get_me()
+    assert vus[0]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/v1/x"
+    assert "SECRET" not in str(e.value)
+    assert len(vus) == 1
+
+
+def test_le_webhook_refuse_aussi_une_redirection(monkeypatch):
+    """La clé part dans un en-tête maison que `requests` ne retire pas sur un changement
+    d'hôte : une 3xx est refusée (`RedirectRefused`), jamais suivie ni retentée, et
+    sa cible est réduite à schéma, hôte et chemin — jamais sa query."""
+    from oto.tools.http.client import RedirectRefused
+    vus = []
+
+    def fake(url, **kw):
+        vus.append(kw)
+        return _Redirige()
+
+    c = ClayTableWebhook(HOOK, auth_token="t")
+    c.session.post = fake
+    with pytest.raises(RedirectRefused) as e:
+        c.push({"a": 1})
+    assert vus[0]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/v1/x"
+    assert "SECRET" not in str(e.value)
+    assert len(vus) == 1

@@ -12,6 +12,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import raise_for_upstream
+from ..http.client import refuse_redirect
 
 
 class _BrevoBase:
@@ -35,7 +36,9 @@ class _BrevoBase:
 
     def _request(self, method: str, path: str, **kwargs) -> Any:
         url = f"{self.BASE_URL}{path}"
-        resp = self.session.request(method, url, timeout=30, **kwargs)
+        resp = self.session.request(method, url, timeout=30, allow_redirects=False,
+                                    **kwargs)
+        refuse_redirect(resp)
         raise_for_upstream(resp, service="brevo")
         # 204 (Brevo PUT/PATCH) and empty bodies → empty dict rather than a JSON crash.
         if not resp.content:

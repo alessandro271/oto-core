@@ -20,6 +20,7 @@ import time
 from typing import Any, Callable, Optional
 
 import requests
+from ..http.client import refuse_redirect
 
 from . import _transport
 from .config import GRAPH_API_BASE, HTTP_TIMEOUT
@@ -111,14 +112,21 @@ class InstagramClient:
         for a reason other than its death would make the call loop between the refusal and
         the renewal."""
         url = f"{GRAPH_API_BASE}{chemin}"
-        r = self._http.get(url, params={**params, "access_token": self.access_token},
-                           timeout=HTTP_TIMEOUT)
+
+        def lire():
+            # The token travels in the query: a followed redirect would hand it to
+            # whatever host the 3xx names, so a 3xx is refused.
+            r = self._http.get(url, params={**params, "access_token": self.access_token},
+                               timeout=HTTP_TIMEOUT, allow_redirects=False)
+            refuse_redirect(r)
+            return r
+
+        r = lire()
         if (r.status_code != 200 and self._renew and not self._renouvele
                 and _transport.jeton_mort(r.status_code, _corps(r))):
             self._renouvele = True
             self.access_token = self._renew()
-            r = self._http.get(url, params={**params, "access_token": self.access_token},
-                               timeout=HTTP_TIMEOUT)
+            r = lire()
         return _transport.lire(r, geste)
 
     def get_profile(self) -> dict:

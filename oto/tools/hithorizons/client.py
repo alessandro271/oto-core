@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 
 _HTTP_TIMEOUT = (10, 60)  # (connect, read) — never wait indefinitely
 
@@ -56,7 +57,9 @@ class HitHorizonsClient:
 
         url = f"{self.BASE_URL}/{self.country}/{endpoint}"
 
-        response = self.session.get(url, params=params, timeout=_HTTP_TIMEOUT)
+        response = self.session.get(url, params=params, timeout=_HTTP_TIMEOUT,
+                                    allow_redirects=False)
+        refuse_redirect(response)
 
         if response.status_code == 429:
             if retry < 3:

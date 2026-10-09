@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 
 
 class AiArkClient:
@@ -58,8 +59,10 @@ class AiArkClient:
         normal case, not an error) instead of raising."""
         url = f"{self.BASE_URL}/{endpoint.lstrip('/')}"
         resp = requests.request(
-            method, url, headers=self._headers(), json=json, timeout=self.TIMEOUT
+            method, url, headers=self._headers(), json=json, timeout=self.TIMEOUT,
+            allow_redirects=False,
         )
+        refuse_redirect(resp)
         if allow_404 and resp.status_code == 404:
             return None
         resp.raise_for_status()

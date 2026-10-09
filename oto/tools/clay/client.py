@@ -38,6 +38,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import UpstreamHTTPError, raise_for_upstream
+from ..http.client import refuse_redirect
 
 SOURCE_TYPES = ("people", "companies")
 
@@ -84,7 +85,9 @@ class ClayClient:
 
     def _request(self, method: str, path: str, **kwargs) -> Any:
         resp = self.session.request(
-            method, f"{self.BASE_URL}{path}", timeout=self.timeout, **kwargs)
+            method, f"{self.BASE_URL}{path}", timeout=self.timeout,
+            allow_redirects=False, **kwargs)
+        refuse_redirect(resp)
         _raise(resp)
         return resp.json() if resp.content else {}
 
@@ -344,7 +347,9 @@ class ClayTableWebhook:
         """POST one row. The whole object lands in the table's Webhook column
         (its keys are mapped to columns on Clay's side); a JSON array is not
         split and makes only one row."""
-        resp = self.session.post(self.webhook_url, json=row, timeout=self.timeout)
+        resp = self.session.post(self.webhook_url, json=row, timeout=self.timeout,
+                                 allow_redirects=False)
+        refuse_redirect(resp)
         _raise(resp)
         if not resp.content:
             return {}

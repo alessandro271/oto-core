@@ -31,7 +31,7 @@ class _Resp:
 def calls(monkeypatch):
     captured = []
 
-    def fake_request(method, url, headers=None, params=None, json=None, timeout=None):
+    def fake_request(method, url, headers=None, params=None, json=None, timeout=None, **kw):
         captured.append({
             "method": method, "url": url, "headers": headers,
             "params": params, "json": json,
@@ -236,7 +236,7 @@ def test_create_content_create_mode_body_shape(c, calls):
 # --- errors -----------------------------------------------------------------
 
 def test_401_raises_upstream_http_error(c, monkeypatch):
-    def fake_request(method, url, headers=None, params=None, json=None, timeout=None):
+    def fake_request(method, url, headers=None, params=None, json=None, timeout=None, **kw):
         return _Resp({"code": "UNAUTHORIZED"}, status_code=401)
 
     monkeypatch.setattr(pw_client.requests, "request", fake_request)
@@ -377,3 +377,39 @@ def test_list_youtube_citations_url(c, calls):
     call = calls[0]
     assert call["url"] == f"{BASE}/socials/youtube"
     assert call["params"]["channelName"] == "Folk"
+
+
+class _Redirige:
+    """Une 3xx vers un autre hôte, dont le `Location` garde la clé en query."""
+    status_code = 302
+    headers = {"Location": "https://ailleurs.test/v1/x?api_key=SECRET#f"}
+    content = b""
+    text = ""
+    ok = False
+
+    def json(self):
+        return {}
+
+    def raise_for_status(self):
+        return None
+
+
+def test_une_redirection_est_refusee_jamais_suivie(monkeypatch):
+    """La clé part dans un en-tête maison que `requests` ne retire pas sur un changement
+    d'hôte : une 3xx est refusée (`RedirectRefused`), jamais suivie ni retentée, et
+    sa cible est réduite à schéma, hôte et chemin — jamais sa query."""
+    from oto.tools.http.client import RedirectRefused
+    vus = []
+
+    def fake(method, url, **kw):
+        vus.append(kw)
+        return _Redirige()
+
+    c = PromptWatchClient(api_key="k")
+    monkeypatch.setattr(pw_client.requests, "request", fake)
+    with pytest.raises(RedirectRefused) as e:
+        c.list_projects()
+    assert vus[0]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/v1/x"
+    assert "SECRET" not in str(e.value)
+    assert len(vus) == 1

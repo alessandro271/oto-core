@@ -19,6 +19,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import raise_for_upstream
+from ..http.client import refuse_redirect
 
 # The prefix that marks a sandbox key. Anything else is treated as production —
 # failing towards the sandbox on an unknown prefix would silently swallow live work.
@@ -50,7 +51,9 @@ class FinkareClient:
             headers["Idempotency-Key"] = kwargs.pop("idempotency_key", None) or str(
                 uuid.uuid4())
         resp = requests.request(method, f"{self.base_url}/{endpoint.lstrip('/')}",
-                                headers=headers, timeout=self.timeout, **kwargs)
+                                headers=headers, timeout=self.timeout,
+                                allow_redirects=False, **kwargs)
+        refuse_redirect(resp)
         raise_for_upstream(resp, service="finkare")
         return resp.json() if resp.content else {}
 

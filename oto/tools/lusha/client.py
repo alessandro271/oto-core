@@ -9,6 +9,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import raise_for_upstream
+from ..http.client import refuse_redirect
 
 _HTTP_TIMEOUT = (10, 60)  # (connect, read) — never an unbounded wait
 
@@ -24,7 +25,9 @@ class LushaClient:
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
         headers = {"api_key": self.api_key, "Content-Type": "application/json"}
-        resp = requests.request(method, f"{self.BASE_URL}{path}", headers=headers, timeout=_HTTP_TIMEOUT, **kwargs)
+        resp = requests.request(method, f"{self.BASE_URL}{path}", headers=headers,
+                                timeout=_HTTP_TIMEOUT, allow_redirects=False, **kwargs)
+        refuse_redirect(resp)
         raise_for_upstream(resp, service="lusha")
         return resp.json() if resp.content else {}
 

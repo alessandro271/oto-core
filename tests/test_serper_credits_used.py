@@ -8,6 +8,7 @@ Maps à 100 résultats ou un scrape difficile ne coûtent pas un crédit.
 from __future__ import annotations
 
 from oto.tools.serper.client import SerperClient
+import pytest
 
 
 def _client() -> SerperClient:
@@ -53,3 +54,39 @@ def test_a_malformed_credits_field_counts_as_one_never_as_zero_or_a_crash():
         assert SerperClient._credits_of(res) == 1
     assert SerperClient._credits_of({"credits": 0}) == 0
     assert SerperClient._credits_of({"credits": 10}) == 10
+
+
+class _Redirige:
+    """Une 3xx vers un autre hôte, dont le `Location` garde la clé en query."""
+    status_code = 302
+    headers = {"Location": "https://ailleurs.test/v1/x?api_key=SECRET#f"}
+    content = b""
+    text = ""
+    ok = False
+
+    def json(self):
+        return {}
+
+    def raise_for_status(self):
+        return None
+
+
+def test_une_redirection_est_refusee_jamais_suivie(monkeypatch):
+    """La clé part dans un en-tête maison que `requests` ne retire pas sur un changement
+    d'hôte : une 3xx est refusée (`RedirectRefused`), jamais suivie ni retentée, et
+    sa cible est réduite à schéma, hôte et chemin — jamais sa query."""
+    from oto.tools.http.client import RedirectRefused
+    vus = []
+
+    def fake(url, **kw):
+        vus.append(kw)
+        return _Redirige()
+
+    c = SerperClient(api_key="k")
+    c.session.post = fake
+    with pytest.raises(RedirectRefused) as e:
+        c._post("https://google.serper.dev/search", {"q": "x"}, "search")
+    assert vus[0]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/v1/x"
+    assert "SECRET" not in str(e.value)
+    assert len(vus) == 1

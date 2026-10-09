@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 
 
 class TopographClient:
@@ -40,7 +41,9 @@ class TopographClient:
         if method.upper() != "GET":
             headers["Content-Type"] = "application/json"
         for attempt in range(3):
-            resp = requests.request(method, url, headers=headers, timeout=60, **kwargs)
+            resp = requests.request(method, url, headers=headers, timeout=60,
+                                    allow_redirects=False, **kwargs)
+            refuse_redirect(resp)
             if resp.status_code == 429:
                 wait = int(resp.headers.get("Retry-After", 2))
                 time.sleep(wait)

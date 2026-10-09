@@ -24,7 +24,7 @@ class _Resp:
 def test_submit_payload_and_headers(monkeypatch):
     captured = {}
 
-    def fake_post(url, headers=None, json=None, timeout=None):
+    def fake_post(url, headers=None, json=None, timeout=None, **kw):
         captured.update(url=url, headers=headers, json=json, timeout=timeout)
         return _Resp(200, {"error": False, "request_id": "req_1", "success": True,
                             "credits_left": 42, "data": [{"email": "a@acme.fr"}]})
@@ -59,7 +59,7 @@ def test_submit_guards():
 def test_fetch_pending(monkeypatch):
     monkeypatch.setattr(
         dc.requests, "get",
-        lambda url, headers=None, params=None, timeout=None: _Resp(
+        lambda url, headers=None, params=None, timeout=None, **kw: _Resp(
             200, {"error": False, "success": False,
                   "reason": "Request not ready yet, try again in 30 seconds"}),
     )
@@ -74,7 +74,7 @@ def test_fetch_unrecognized_reason_is_not_pending(monkeypatch):
     the caller should not be told to just retry blindly."""
     monkeypatch.setattr(
         dc.requests, "get",
-        lambda url, headers=None, params=None, timeout=None: _Resp(
+        lambda url, headers=None, params=None, timeout=None, **kw: _Resp(
             200, {"error": False, "success": False, "reason": "unknown request_id"}),
     )
     out = dc.DropcontactClient(api_key="k").fetch("bogus")
@@ -89,7 +89,7 @@ def test_fetch_done(monkeypatch):
     }
     monkeypatch.setattr(
         dc.requests, "get",
-        lambda url, headers=None, params=None, timeout=None: _Resp(200, body),
+        lambda url, headers=None, params=None, timeout=None, **kw: _Resp(200, body),
     )
     out = dc.DropcontactClient(api_key="k").fetch("req_1", force_results=True)
     assert out["done"] is True
@@ -100,7 +100,7 @@ def test_fetch_done(monkeypatch):
 def test_fetch_force_results_query_param(monkeypatch):
     captured = {}
 
-    def fake_get(url, headers=None, params=None, timeout=None):
+    def fake_get(url, headers=None, params=None, timeout=None, **kw):
         captured.update(params=params)
         return _Resp(200, {"error": False, "success": False, "reason": "wait"})
 
@@ -115,7 +115,7 @@ def test_fetch_force_results_query_param(monkeypatch):
 def test_submit_raises_on_http_error(monkeypatch):
     monkeypatch.setattr(
         dc.requests, "post",
-        lambda url, headers=None, json=None, timeout=None: _Resp(
+        lambda url, headers=None, json=None, timeout=None, **kw: _Resp(
             401, {"error": True, "reason": "Wrong access token"}),
     )
     with pytest.raises(UpstreamHTTPError) as exc:
@@ -128,7 +128,7 @@ def test_submit_raises_if_no_request_id(monkeypatch):
     silently (the caller would otherwise poll dropcontact_result(None) forever)."""
     monkeypatch.setattr(
         dc.requests, "post",
-        lambda url, headers=None, json=None, timeout=None: _Resp(
+        lambda url, headers=None, json=None, timeout=None, **kw: _Resp(
             200, {"error": False, "success": True, "credits_left": 10, "data": []}),
     )
     with pytest.raises(RuntimeError, match="no request_id"):
@@ -138,7 +138,7 @@ def test_submit_raises_if_no_request_id(monkeypatch):
 def test_check_credits_uses_empty_contact(monkeypatch):
     captured = {}
 
-    def fake_post(url, headers=None, json=None, timeout=None):
+    def fake_post(url, headers=None, json=None, timeout=None, **kw):
         captured.update(json=json)
         return _Resp(200, {"error": False, "request_id": "req_credits", "success": True,
                             "credits_left": 100, "data": [{}]})
@@ -147,3 +147,39 @@ def test_check_credits_uses_empty_contact(monkeypatch):
     out = dc.DropcontactClient(api_key="k").check_credits()
     assert out["credits_left"] == 100
     assert captured["json"]["data"] == [{}]
+
+
+class _Redirige:
+    """Une 3xx vers un autre hôte, dont le `Location` garde la clé en query."""
+    status_code = 302
+    headers = {"Location": "https://ailleurs.test/v1/x?api_key=SECRET#f"}
+    content = b""
+    text = ""
+    ok = False
+
+    def json(self):
+        return {}
+
+    def raise_for_status(self):
+        return None
+
+
+def test_une_redirection_est_refusee_jamais_suivie(monkeypatch):
+    """La clé part dans un en-tête maison que `requests` ne retire pas sur un changement
+    d'hôte : une 3xx est refusée (`RedirectRefused`), jamais suivie ni retentée, et
+    sa cible est réduite à schéma, hôte et chemin — jamais sa query."""
+    from oto.tools.http.client import RedirectRefused
+    vus = []
+
+    def fake(url, **kw):
+        vus.append(kw)
+        return _Redirige()
+
+    c = dc.DropcontactClient(api_key="k")
+    monkeypatch.setattr(dc.requests, "get", fake)
+    with pytest.raises(RedirectRefused) as e:
+        c.fetch("rid")
+    assert vus[0]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/v1/x"
+    assert "SECRET" not in str(e.value)
+    assert len(vus) == 1

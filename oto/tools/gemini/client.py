@@ -16,6 +16,7 @@ from typing import Optional, List, Dict, Any
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 
 
 class GeminiClient:
@@ -36,6 +37,13 @@ class GeminiClient:
 
     def _url(self, model: str, method: str) -> str:
         return f"{self.BASE_URL}/models/{model}:{method}?key={self.api_key}"
+
+    def _post(self, url: str, payload: dict, timeout: int) -> requests.Response:
+        """One POST to the API. The key travels in the URL (`?key=`): a followed
+        redirect would hand it to whatever host the 3xx names, so it is refused."""
+        resp = requests.post(url, json=payload, timeout=timeout, allow_redirects=False)
+        refuse_redirect(resp)
+        return resp
 
     # --- Text generation ---
 
@@ -83,11 +91,7 @@ class GeminiClient:
                 "parts": [{"text": system_instruction}]
             }
 
-        resp = requests.post(
-            self._url(model or self.model, "generateContent"),
-            json=payload,
-            timeout=60,
-        )
+        resp = self._post(self._url(model or self.model, "generateContent"), payload, 60)
         if not resp.ok:
             raise Exception(f"Gemini API error: {resp.status_code} {resp.text}")
 
@@ -159,7 +163,7 @@ class GeminiClient:
             },
         }
 
-        resp = requests.post(self._url(model, "generateContent"), json=payload, timeout=120)
+        resp = self._post(self._url(model, "generateContent"), payload, 120)
         if not resp.ok:
             return {"status": "error", "error": f"Gemini API error: {resp.status_code} {resp.text}"}
 
@@ -234,7 +238,7 @@ class GeminiClient:
             "generationConfig": gen_config,
         }
 
-        resp = requests.post(self._url(model, "generateContent"), json=payload, timeout=120)
+        resp = self._post(self._url(model, "generateContent"), payload, 120)
         if not resp.ok:
             return {"status": "error", "error": f"Gemini API error: {resp.status_code} {resp.text[:200]}"}
 

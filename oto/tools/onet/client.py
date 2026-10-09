@@ -26,6 +26,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import raise_for_upstream
+from ..http.client import refuse_redirect
 
 
 class ONetClient:
@@ -50,7 +51,8 @@ class ONetClient:
         resp = self.session.get(f"{self.BASE_URL}{path}",
                                 params={k: v for k, v in (params or {}).items()
                                         if v is not None},
-                                timeout=(10, timeout))
+                                timeout=(10, timeout), allow_redirects=False)
+        refuse_redirect(resp)
         raise_for_upstream(resp, service="onet")
         return resp.json() if resp.content else {}
 

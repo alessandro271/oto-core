@@ -57,7 +57,7 @@ class _Session:
         self.reponses = list(reponses)
         self.calls: list[dict] = []
 
-    def _suivante(self, methode, url, params=None, data=None, timeout=None):
+    def _suivante(self, methode, url, params=None, data=None, timeout=None, **kw):
         self.calls.append({"method": methode, "url": url,
                            "params": dict(params or {}), "data": dict(data or {}),
                            "timeout": timeout})
@@ -354,3 +354,38 @@ def test_aucune_coordonnee_d_application_dans_le_paquet():
     with pytest.raises(TypeError):
         InstagramApp()      # aucun défaut : l'appelant DOIT les fournir
     assert json.dumps(list(ig_config.SCOPES))      # sérialisable, donc pas d'objet caché
+
+
+class _Redirige:
+    """Une 3xx vers un autre hôte, dont le `Location` garde la clé en query."""
+    status_code = 302
+    headers = {"Location": "https://ailleurs.test/v1/x?api_key=SECRET#f"}
+    content = b""
+    text = ""
+    ok = False
+
+    def json(self):
+        return {}
+
+    def raise_for_status(self):
+        return None
+
+
+def test_une_redirection_est_refusee_jamais_suivie():
+    """Le jeton part en query : une 3xx est refusée (`RedirectRefused`), jamais suivie,
+    et sa cible est réduite à schéma, hôte et chemin — jamais sa query."""
+    from oto.tools.http.client import RedirectRefused
+    vus = []
+
+    class _Session:
+        def get(self, url, **kw):
+            vus.append(kw)
+            return _Redirige()
+
+    c = ig_client.InstagramClient("tok", "u1", session=_Session())
+    with pytest.raises(RedirectRefused) as e:
+        c.get_profile()
+    assert vus[0]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/v1/x"
+    assert "SECRET" not in str(e.value)
+    assert len(vus) == 1

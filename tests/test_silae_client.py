@@ -49,7 +49,7 @@ class _Session:
         self.tokens.append({"url": url, "data": data})
         return self.token
 
-    def request(self, method, url, json=None, params=None, headers=None, timeout=None):
+    def request(self, method, url, json=None, params=None, headers=None, timeout=None, **kw):
         self.appels.append({"method": method, "url": url, "json": json, "params": params,
                             "headers": headers})
         return self.reponses.pop(0) if self.reponses else _Resp({})
@@ -416,3 +416,40 @@ def test_forbidden_functions_are_not_implemented():
     for interdit in ("ControlerBulletinsPeriode", "ImportXmlParametrageOrganismeDSN",
                      "ActivationDSN", "GererCycleDePaie", "CalculerBulletin"):
         assert interdit not in sources
+
+
+class _Redirige:
+    """Une 3xx vers un autre hôte, dont le `Location` garde la clé en query."""
+    status_code = 302
+    headers = {"Location": "https://ailleurs.test/v1/x?api_key=SECRET#f"}
+    content = b""
+    text = ""
+    ok = False
+
+    def json(self):
+        return {}
+
+    def raise_for_status(self):
+        return None
+
+
+def test_une_redirection_est_refusee_jamais_suivie(monkeypatch):
+    """La clé part dans un en-tête maison (`Ocp-Apim-Subscription-Key`) que `requests` ne retire pas sur un changement
+    d'hôte : une 3xx est refusée (`RedirectRefused`), jamais suivie ni retentée, et
+    sa cible est réduite à schéma, hôte et chemin — jamais sa query."""
+    from oto.tools.http.client import RedirectRefused
+    vus = []
+
+    def fake(method, url, **kw):
+        vus.append(kw)
+        return _Redirige()
+
+    monkeypatch.setattr(silae_auth, "get_access_token", lambda *a, **k: "tok")
+    c = SilaeClient(client_id="cid", client_secret="csec", subscription_key="sub")
+    c.session.request = fake
+    with pytest.raises(RedirectRefused) as e:
+        c.call("v1/X")
+    assert vus[0]["allow_redirects"] is False
+    assert e.value.location == "https://ailleurs.test/v1/x"
+    assert "SECRET" not in str(e.value)
+    assert len(vus) == 1

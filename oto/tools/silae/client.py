@@ -43,6 +43,7 @@ import requests
 
 from ..common import FieldFilter, UpstreamHTTPError, raise_for_upstream
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 from . import auth
 from ._api import (
     _BulletinsMixin,
@@ -130,7 +131,9 @@ class SilaeClient(
                 "dossiers": "" if numero_dossier is None else str(numero_dossier),
             }
             resp = self.session.request(method, url, json=body, params=params,
-                                        headers=headers, timeout=timeout)
+                                        headers=headers, timeout=timeout,
+                                        allow_redirects=False)
+            refuse_redirect(resp)
             last = attempt == retries - 1
             if resp.status_code == 401 and attempt == 0 and not last:
                 auth.invalidate(self.client_id, self.client_secret)

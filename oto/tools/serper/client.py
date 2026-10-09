@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 
 _HTTP_TIMEOUT = (10, 60)  # (connect, read) — never wait indefinitely
 
@@ -102,7 +103,9 @@ class SerperClient:
         default. Scrape sets a shorter one, see `_SCRAPE_TIMEOUT`."""
         self._rate_limit()
         response = self.session.post(url, json=json_data,
-                                     timeout=timeout or _HTTP_TIMEOUT)
+                                     timeout=timeout or _HTTP_TIMEOUT,
+                                     allow_redirects=False)
+        refuse_redirect(response)
         if response.status_code >= 400:
             try:
                 msg = response.json().get("message") or response.text

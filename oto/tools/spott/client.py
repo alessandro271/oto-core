@@ -29,6 +29,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import FieldFilter, raise_for_upstream
+from ..http.client import refuse_redirect
 
 # Entities that have a stage pipeline (`GET /pipeline/<entity>/stages`).
 # `applications`/`vacancies` = the two everyday recruiting pipelines;
@@ -67,7 +68,9 @@ class SpottClient:
 
     def _request(self, method: str, path: str, **kwargs) -> Any:
         resp = self.session.request(
-            method, f"{self.BASE_URL}{path}", timeout=30, **kwargs)
+            method, f"{self.BASE_URL}{path}", timeout=30, allow_redirects=False,
+            **kwargs)
+        refuse_redirect(resp)
         raise_for_upstream(resp, service="spott")
         if not resp.content:
             return {}

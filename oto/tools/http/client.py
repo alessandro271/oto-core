@@ -194,7 +194,11 @@ def safe_location(location: str) -> str:
     return urlunsplit((p.scheme, host, p.path, "", ""))
 
 
-def _refuse_redirect(r: requests.Response) -> None:
+def refuse_redirect(r: requests.Response) -> None:
+    """Raise `RedirectRefused` on a 3xx. Shared by every client that injects its auth
+    outside `Authorization` (custom header, query parameter): `requests` only strips
+    `Authorization` on a cross-host redirect, so each of them calls with
+    `allow_redirects=False` and passes the response here BEFORE any retry."""
     if 300 <= r.status_code < 400:
         raise RedirectRefused(r.status_code, r.headers.get("Location") or "")
 
@@ -251,7 +255,7 @@ class HttpConnectorClient:
         if r.status_code == 401:
             self._auth.refresh(s)
             r = _send()
-        _refuse_redirect(r)
+        refuse_redirect(r)
         r.raise_for_status()
         return r.json() if r.content else {}
 
@@ -284,7 +288,7 @@ class HttpConnectorClient:
             self._auth.refresh(s)
             r = _send()
         try:
-            _refuse_redirect(r)
+            refuse_redirect(r)
             r.raise_for_status()
             declared = r.headers.get("Content-Length")
             if declared and declared.isdigit() and int(declared) > max_bytes:

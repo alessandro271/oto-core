@@ -9,6 +9,7 @@ from typing import Dict, Any, List
 import requests
 
 from ..common.credentials import require
+from ..http.client import refuse_redirect
 
 _HTTP_TIMEOUT = (10, 60)  # (connect, read) — never an unbounded wait
 
@@ -38,7 +39,9 @@ class ZeroBounceClient:
         params = params or {}
         params["api_key"] = self.api_key
 
-        response = requests.get(url, params=params, timeout=_HTTP_TIMEOUT)
+        response = requests.get(url, params=params, timeout=_HTTP_TIMEOUT,
+                                allow_redirects=False)
+        refuse_redirect(response)
         response.raise_for_status()
         return response.json()
 
@@ -90,6 +93,8 @@ class ZeroBounceClient:
             "email_batch": [{"email_address": e} for e in emails]
         }
 
-        response = requests.post(url, json=data, timeout=_HTTP_TIMEOUT)
+        response = requests.post(url, json=data, timeout=_HTTP_TIMEOUT,
+                                 allow_redirects=False)
+        refuse_redirect(response)
         response.raise_for_status()
         return response.json().get("email_batch", [])
