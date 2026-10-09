@@ -13,7 +13,14 @@ filters (a shorter period); `search` refuses the window instead of letting the A
 answer an opaque 400.
 
 ⚠️ Several fields are JSON documents serialised as strings (`jugement`, `acte`,
-`modificationsgenerales`, `depot`, `listepersonnes`…): they are parsed here.
+`modificationsgenerales`, `depot`, `listepersonnes`…): they are parsed here. One that
+does not parse raises `BodaccPayloadError` — never a string handed back as if it were
+the document, which would empty every derived column in silence.
+
+⚠️ `registre` of a SALE carries the SIREN of BOTH parties (seller and buyer), and
+`commercant` concatenates both names (measured 09/10/2026: 80 sales out of 100). A flat
+line therefore never picks one: `siren` is set only when the notice names exactly one
+company, and `parties` lists every SIREN with the role the notice makes readable.
 
 Requires: requests
 """
@@ -21,6 +28,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -77,38 +85,112 @@ class BodaccQueryError(ValueError):
     the pagination cap…) — refused before any request."""
 
 
+class BodaccPayloadError(ValueError):
+    """The dataset served a notice this client cannot read (a JSON field that does not
+    parse): named, never silently flattened into empty columns."""
+
+
+# Where a notice names its FORMER holders, and the role each block gives a SIREN.
+_ANCIENS: Dict[str, str] = {
+    "listeprecedentproprietaire": "ancien_proprietaire",
+    "listeprecedentexploitant": "ancien_exploitant",
+}
+
+
 def _quote(value: str) -> str:
     """An ODSQL string literal: double quotes, `\\` and `"` escaped."""
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def _date(name: str, value: Optional[str]) -> Optional[str]:
+def _date(name: str, value: Optional[str]) -> Optional[date]:
+    """A real calendar date, not just four-two-two digits: `2026-13-45` is refused here,
+    not left to the dataset's opaque 400."""
     if value is None:
         return None
     if not _DATE.match(value):
         raise BodaccQueryError(f"{name}: expected a date YYYY-MM-DD, got {value!r}")
-    return value
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise BodaccQueryError(f"{name}: not a calendar date, got {value!r}") from None
 
 
-def _parse(value: Any) -> Any:
+def _parse(value: Any, *, field: str = "?", notice_id: Any = None) -> Any:
     if isinstance(value, str) and value[:1] in "{[":
         try:
             return json.loads(value)
-        except ValueError:
-            return value
+        except ValueError as e:
+            raise BodaccPayloadError(
+                f"notice {notice_id!r}: field {field!r} is not readable JSON ({e})") from None
     return value
 
 
-def _siren_of(registre: Any) -> Optional[str]:
-    """`registre` is a list such as ['791195415', '791 195 415']: the SIREN is the
-    9-digit item once spaces are removed."""
+def _parse_record(rec: Dict[str, Any]) -> Dict[str, Any]:
+    nid = rec.get("id")
+    return {k: _parse(v, field=k, notice_id=nid) for k, v in rec.items()}
+
+
+def _siren(numero: Any) -> Optional[str]:
+    digits = str(numero or "").replace(" ", "")
+    return digits if _SIREN.match(digits) else None
+
+
+def _sirens_of(registre: Any) -> List[str]:
+    """`registre` is a list such as ['791195415', '791 195 415'] — and the one of a sale
+    carries the SIREN of BOTH parties. Every distinct SIREN, in the dataset's order."""
     if isinstance(registre, str):
         registre = [registre]
+    out: List[str] = []
     for item in registre or []:
-        digits = str(item).replace(" ", "")
-        if _SIREN.match(digits):
-            return digits
-    return None
+        s = _siren(item)
+        if s and s not in out:
+            out.append(s)
+    return out
+
+
+def _personnes(bloc: Any) -> List[Dict[str, Any]]:
+    """The `personne` entries of a `liste*` block: one object or a list of them."""
+    if not isinstance(bloc, dict):
+        return []
+    p = bloc.get("personne")
+    items = p if isinstance(p, list) else [p]
+    return [x for x in items if isinstance(x, dict)]
+
+
+def _siren_de_personne(p: Dict[str, Any]) -> Optional[str]:
+    immat = p.get("numeroImmatriculation") or {}
+    return _siren(immat.get("numeroIdentification")) if isinstance(immat, dict) else None
+
+
+def parties(rec: Dict[str, Any]) -> List[Dict[str, Optional[str]]]:
+    """Every SIREN of the notice with the role it makes readable: `ancien_proprietaire`
+    or `ancien_exploitant` (named in the `listeprecedent*` blocks), `titulaire` (named
+    in `listepersonnes` — the buyer of a sale, the subject otherwise), `indeterminee`
+    when the registre carries a SIREN no block names. Never guessed."""
+    roles: Dict[str, str] = {}
+    for champ, role in _ANCIENS.items():
+        for p in _personnes(rec.get(champ)):
+            s = _siren_de_personne(p)
+            if s:
+                roles.setdefault(s, role)
+    for p in _personnes(rec.get("listepersonnes")):
+        s = _siren_de_personne(p)
+        if s:
+            roles.setdefault(s, "titulaire")
+    out = [{"siren": s, "role": roles.get(s, "indeterminee")} for s in _sirens_of(rec.get("registre"))]
+    for s, role in roles.items():
+        if all(x["siren"] != s for x in out):
+            out.append({"siren": s, "role": role})
+    return out
+
+
+def _adresse(a: Any) -> Optional[str]:
+    if not isinstance(a, dict):
+        return None
+    morceaux = [a.get("numeroVoie"), a.get("typeVoie"), a.get("nomVoie"), a.get("codePostal"),
+                a.get("ville")]
+    texte = " ".join(str(m) for m in morceaux if m)
+    return texte or None
 
 
 def _first(value: Any) -> Any:
@@ -149,27 +231,44 @@ def _summary(rec: Dict[str, Any]) -> Optional[str]:
 
 def flatten(rec: Dict[str, Any]) -> Dict[str, Any]:
     """A notice as returned by the dataset (JSON fields already parsed) → a flat,
-    table-friendly line."""
+    table-friendly line.
+
+    `siren` is set only when the notice names exactly ONE company; a sale names two
+    (seller and buyer) and gets `siren=None` with both in `parties`. The company's own
+    fields (`activite`, `forme_juridique`, `capital`, `adresse_siege`) come from
+    `listepersonnes.personne` — the block the dataset fills (100/100 insolvency notices
+    sampled 09/10/2026) — `activite` falling back on the establishment when the person
+    block has none (sales describe the business sold there)."""
     jugement = rec.get("jugement") if isinstance(rec.get("jugement"), dict) else {}
     etab = _first((rec.get("listeetablissements") or {}).get("etablissement")
                   if isinstance(rec.get("listeetablissements"), dict) else None)
+    etab = etab if isinstance(etab, dict) else {}
     depot = rec.get("depot") if isinstance(rec.get("depot"), dict) else {}
+    personne = next(iter(_personnes(rec.get("listepersonnes"))), {})
+    capital = personne.get("capital") if isinstance(personne.get("capital"), dict) else {}
+    sirens = _sirens_of(rec.get("registre"))
     return {
         "id": rec.get("id"),
         "date_parution": rec.get("dateparution"),
         "famille": rec.get("familleavis"),
         "famille_lib": rec.get("familleavis_lib"),
         "type_avis": rec.get("typeavis"),
-        "siren": _siren_of(rec.get("registre")),
+        "siren": sirens[0] if len(sirens) == 1 else None,
+        "parties": parties(rec),
         "commercant": rec.get("commercant"),
+        "denomination": personne.get("denomination"),
+        "forme_juridique": personne.get("formeJuridique"),
+        "capital": capital.get("montantCapital"),
+        "adresse_siege": _adresse(personne.get("adresseSiegeSocial") or personne.get("adressePP")),
         "ville": rec.get("ville"),
         "cp": rec.get("cp"),
         "departement": rec.get("numerodepartement"),
+        "region": rec.get("region_nom_officiel"),
         "tribunal": rec.get("tribunal"),
         "jugement_nature": jugement.get("nature"),
         "jugement_date": jugement.get("date"),
         "date_cloture": depot.get("dateCloture"),
-        "activite": etab.get("activite") if isinstance(etab, dict) else None,
+        "activite": personne.get("activite") or etab.get("activite"),
         "resume": _summary(rec),
         "url": rec.get("url_complete"),
     }
@@ -220,9 +319,13 @@ class BodaccNoticesClient:
                 raise BodaccQueryError(
                     f"departement: expected a department code (e.g. 75, 2A, 974), got {departement!r}")
             clauses.append(f"numerodepartement={_quote(dep)}")
-        if _date("date_from", date_from):
+        debut, fin = _date("date_from", date_from), _date("date_to", date_to)
+        if debut and fin and debut > fin:
+            raise BodaccQueryError(
+                f"empty window: date_from {date_from} is after date_to {date_to}")
+        if debut:
             clauses.append(f"dateparution>={_quote(date_from)}")
-        if _date("date_to", date_to):
+        if fin:
             clauses.append(f"dateparution<={_quote(date_to)}")
         if commercant:
             clauses.append(f"search(commercant, {_quote(commercant)})")
@@ -266,13 +369,15 @@ class BodaccNoticesClient:
         if clause:
             params["where"] = clause
         data = self._records(params)
-        rows = [{k: _parse(v) for k, v in r.items()} for r in data.get("results") or []]
+        rows = [_parse_record(r) for r in data.get("results") or []]
         total = int(data.get("total_count") or 0)
         nxt = offset + len(rows)
+        # A `next_offset` is only announced when the NEXT call, at the same `limit`,
+        # would be accepted (`offset + limit` ≤ cap) — not one the cap then refuses.
         return {
             "total_count": total,
             "offset": offset,
-            "next_offset": nxt if rows and nxt < total and nxt + 1 <= OFFSET_MAX else None,
+            "next_offset": nxt if rows and nxt < total and nxt + limit <= OFFSET_MAX else None,
             "notices": rows if raw else [flatten(r) for r in rows],
         }
 
@@ -282,7 +387,7 @@ class BodaccNoticesClient:
         rows = data.get("results") or []
         if not rows:
             return None
-        return {k: _parse(v) for k, v in rows[0].items() if v is not None}
+        return {k: v for k, v in _parse_record(rows[0]).items() if v is not None}
 
     def count(self, group_by: str, *, limit: int = 100, **filters: Any) -> Dict[str, Any]:
         """Number of notices matching `filters`, grouped by `group_by` (a key of

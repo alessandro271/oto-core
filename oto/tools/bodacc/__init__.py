@@ -1,4 +1,4 @@
 from .client import BodaccClient
-from .notices import BodaccNoticesClient, BodaccQueryError
+from .notices import BodaccNoticesClient, BodaccPayloadError, BodaccQueryError
 
-__all__ = ["BodaccClient", "BodaccNoticesClient", "BodaccQueryError"]
+__all__ = ["BodaccClient", "BodaccNoticesClient", "BodaccPayloadError", "BodaccQueryError"]

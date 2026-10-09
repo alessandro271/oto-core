@@ -11,7 +11,7 @@ import json
 import pytest
 
 from oto.tools.bodacc import notices as bodacc
-from oto.tools.bodacc import BodaccNoticesClient, BodaccQueryError
+from oto.tools.bodacc import BodaccNoticesClient, BodaccPayloadError, BodaccQueryError
 from oto.tools.common.errors import UpstreamHTTPError
 
 
@@ -44,9 +44,36 @@ _DPC = {
 }
 
 _VENTE = {
-    "id": "B3", "familleavis": "vente", "registre": "987 654 321",
+    # Une vente : le registre porte le cédant ET l'acquéreur (80 ventes sur 100 mesurées
+    # le 09/10/2026), et `commercant` concatène les deux noms.
+    "id": "B3", "familleavis": "vente", "registre": ["109223321", "109 223 321",
+                                                     "799641303", "799 641 303"],
+    "commercant": "HANUMAAN, FORMIDABLE", "region_nom_officiel": "Provence-Alpes-Côte d'Azur",
     "acte": json.dumps({"vente": {"categorieVente": "Achat d'un fonds"}}),
+    "listepersonnes": json.dumps({"personne": {
+        "typePersonne": "pm", "denomination": "HANUMAAN",
+        "numeroImmatriculation": {"numeroIdentification": "109 223 321"},
+        "formeJuridique": "Société par actions simplifiée",
+        "capital": {"montantCapital": "5000.00", "devise": "EUR"},
+        "adresseSiegeSocial": {"numeroVoie": "30", "typeVoie": "Rue", "nomVoie": "Pertinax",
+                               "codePostal": "06000", "ville": "Nice"}}}),
+    "listeprecedentproprietaire": json.dumps({"personne": {
+        "typePersonne": "pm", "denomination": "FORMIDABLE",
+        "numeroImmatriculation": {"numeroIdentification": "799 641 303"}}}),
     "listeetablissements": json.dumps({"etablissement": [{"activite": "boulangerie"}]}),
+}
+
+_COLLECTIVE_PP = {
+    # Une procédure collective d'une personne physique : l'activité est dans
+    # `listepersonnes.personne`, jamais dans `listeetablissements` (vide, 100/100).
+    "id": "D4", "familleavis": "collective", "registre": None,
+    "commercant": "DAVID, Alexandre (EI)",
+    "listepersonnes": json.dumps({"personne": {
+        "typePersonne": "pp", "nom": "DAVID", "prenom": "Alexandre",
+        "activite": "Travaux de maçonnerie générale",
+        "adressePP": {"numeroVoie": "30", "typeVoie": "rue", "nomVoie": "d'Ourscamp",
+                      "codePostal": "02290", "ville": "Saint-Christophe-à-Berry"}}}),
+    "listeetablissements": None,
 }
 
 
@@ -87,6 +114,8 @@ def test_guillemets_et_antislash_echappes():
     {"famille": "procedure_collective"},
     {"departement": "7"},
     {"date_from": "09/10/2026"},
+    {"date_from": "2026-13-45"},                              # la forme passe, pas le calendrier
+    {"date_from": "2026-10-09", "date_to": "2026-10-01"},     # fenêtre vide
     {"type_avis": "initial"},
     {"siren": "12345"},
 ])
@@ -104,6 +133,14 @@ def test_plafond_de_pagination_refuse(api):
     assert api["calls"] == []
 
 
+def test_next_offset_n_annonce_jamais_une_page_que_le_plafond_refuse(api):
+    api["body"] = {"total_count": 20_000, "results": [_COLLECTIVE] * 50}
+    # 9 920 + 50 = 9 970 : l'appel suivant (9 970 + 50 > 10 000) serait refusé → None.
+    assert BodaccNoticesClient().search(limit=50, offset=9920)["next_offset"] is None
+    # 9 900 + 50 = 9 950 : l'appel suivant tient dans le plafond → annoncé.
+    assert BodaccNoticesClient().search(limit=50, offset=9900)["next_offset"] == 9950
+
+
 def test_search_aplatit_et_pagine(api):
     api["body"] = {"total_count": 3, "results": [_COLLECTIVE, _DPC]}
     out = BodaccNoticesClient().search(famille="collective", limit=2)
@@ -114,6 +151,7 @@ def test_search_aplatit_et_pagine(api):
     assert out["total_count"] == 3 and out["next_offset"] == 2
     first, second = out["notices"]
     assert first["siren"] == "811038504"
+    assert first["parties"] == [{"siren": "811038504", "role": "indeterminee"}]
     assert first["jugement_nature"] == "Jugement d'ouverture"
     assert first["resume"] == "Liquidation judiciaire."
     assert second["date_cloture"] == "2025-12-31"
@@ -125,12 +163,42 @@ def test_derniere_page_sans_next_offset(api):
     assert BodaccNoticesClient().search(limit=2)["next_offset"] is None
 
 
-def test_vente_resume_et_activite_depuis_une_liste(api):
+def test_une_vente_ne_choisit_pas_un_siren_au_hasard(api):
     api["body"] = {"total_count": 1, "results": [_VENTE]}
     line = BodaccNoticesClient().search()["notices"][0]
-    assert line["siren"] == "987654321"
+    assert line["siren"] is None                       # deux parties : jamais l'une au hasard
+    assert line["parties"] == [{"siren": "109223321", "role": "titulaire"},
+                               {"siren": "799641303", "role": "ancien_proprietaire"}]
     assert line["resume"] == "Achat d'un fonds"
-    assert line["activite"] == "boulangerie"
+    assert line["activite"] == "boulangerie"           # l'établissement, faute de personne.activite
+    assert line["denomination"] == "HANUMAAN"
+    assert line["forme_juridique"] == "Société par actions simplifiée"
+    assert line["capital"] == "5000.00"
+    assert line["adresse_siege"] == "30 Rue Pertinax 06000 Nice"
+    assert line["region"] == "Provence-Alpes-Côte d'Azur"
+
+
+def test_un_siren_du_registre_hors_de_tout_bloc_est_indetermine(api):
+    rec = dict(_VENTE, listeprecedentproprietaire=None)
+    api["body"] = {"total_count": 1, "results": [rec]}
+    line = BodaccNoticesClient().search()["notices"][0]
+    assert line["parties"][1] == {"siren": "799641303", "role": "indeterminee"}
+
+
+def test_l_activite_vient_de_la_personne_pas_de_l_etablissement(api):
+    api["body"] = {"total_count": 1, "results": [_COLLECTIVE_PP]}
+    line = BodaccNoticesClient().search()["notices"][0]
+    assert line["activite"] == "Travaux de maçonnerie générale"
+    assert line["adresse_siege"] == "30 rue d'Ourscamp 02290 Saint-Christophe-à-Berry"
+    assert line["siren"] is None and line["parties"] == []
+
+
+def test_un_champ_json_illisible_leve_au_lieu_de_vider_les_colonnes(api):
+    api["body"] = {"total_count": 1, "results": [dict(_COLLECTIVE, jugement="{pas du json")]}
+    with pytest.raises(BodaccPayloadError, match="A1.*jugement"):
+        BodaccNoticesClient().search()
+    with pytest.raises(BodaccPayloadError):
+        BodaccNoticesClient().get("A1")
 
 
 def test_raw_rend_les_champs_json_parses(api):
