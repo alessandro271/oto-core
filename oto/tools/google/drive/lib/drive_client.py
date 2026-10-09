@@ -259,7 +259,9 @@ class DriveClient:
         returns their content. Diskless, so usable by a consumer without a FS
         (MCP server) — the export needs no output file, only a
         conversion. Common formats: text/markdown and text/plain (Docs),
-        text/csv (Sheets, first sheet), application/pdf, text/html.
+        text/csv (Sheets, first sheet), application/pdf, text/html, and
+        application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (Sheets,
+        EVERY tab, as a .xlsx workbook — the only export that keeps the tabs).
         """
         try:
             metadata = self.service.files().get(

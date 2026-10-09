@@ -37,17 +37,134 @@ class SheetsClient:
         self.service = build('sheets', 'v4', credentials=require(credentials, 'GOOGLE_CREDENTIALS'))
         self.sheets = self.service.spreadsheets()
 
-    def create(self, title: str) -> dict:
-        """Create a new empty spreadsheet."""
+    def create(self, title: str, sheets: Optional[List[str]] = None) -> dict:
+        """Create a new spreadsheet, with the tabs named in `sheets` (in order).
+
+        Without `sheets`, Google creates one tab named in the account's locale
+        (`Sheet1`, `Feuille 1`…): a write to `'Prospects'!A1` right after then fails
+        with a 400 (`Unable to parse range`) because no such tab exists. Naming the
+        tabs here spares the add_sheet round trip and the guess on the default name.
+        """
+        body: dict = {'properties': {'title': title}}
+        if sheets:
+            body['sheets'] = [{'properties': {'title': _tab_title(t)}} for t in sheets]
         result = self.sheets.create(
-            body={'properties': {'title': title}},
-            fields='spreadsheetId,spreadsheetUrl,properties.title',
+            body=body,
+            fields='spreadsheetId,spreadsheetUrl,properties.title,sheets.properties',
         ).execute()
         return {
             'id': result['spreadsheetId'],
             'title': result['properties']['title'],
             'url': result['spreadsheetUrl'],
+            'sheets': [s['properties']['title'] for s in result.get('sheets', [])],
         }
+
+    # --- tabs, rows, formats: one transport, `spreadsheets.batchUpdate` -----------
+
+    def _batch(self, spreadsheet_id: str, requests: List[dict]) -> dict:
+        """The single `batchUpdate` call every structural op goes through."""
+        return self.sheets.batchUpdate(
+            spreadsheetId=spreadsheet_id, body={'requests': requests}).execute()
+
+    def sheet_id(self, spreadsheet_id: str, sheet) -> int:
+        """The numeric id of a tab, given its id or its title.
+
+        A title is resolved on the live metadata; absent or duplicated, the call
+        raises and NAMES the tabs: Google would otherwise answer a bare 400."""
+        if isinstance(sheet, bool) or sheet is None:
+            raise SheetsClientError("sheet: give a tab title or its numeric id")
+        if isinstance(sheet, int):
+            return sheet
+        title = str(sheet).strip()
+        if title.isdigit():
+            return int(title)
+        tabs = self.get_metadata(spreadsheet_id)['sheets']
+        found = [t for t in tabs if t['title'] == title]
+        if len(found) == 1:
+            return found[0]['id']
+        names = ', '.join(repr(t['title']) for t in tabs) or '(none)'
+        if not found:
+            raise SheetsClientError(f"no tab named {title!r}; tabs: {names}")
+        raise SheetsClientError(f"{len(found)} tabs named {title!r}: pass the id")
+
+    def add_sheet(self, spreadsheet_id: str, title: str, index: Optional[int] = None) -> dict:
+        """Add a tab named `title`; `index` = its 0-based position (end by default)."""
+        props: dict = {'title': _tab_title(title)}
+        if index is not None:
+            props['index'] = int(index)
+        result = self._batch(spreadsheet_id, [{'addSheet': {'properties': props}}])
+        added = result['replies'][0]['addSheet']['properties']
+        return {'id': added['sheetId'], 'title': added['title'], 'index': added.get('index')}
+
+    def rename_sheet(self, spreadsheet_id: str, sheet, new_title: str) -> dict:
+        sid = self.sheet_id(spreadsheet_id, sheet)
+        self._batch(spreadsheet_id, [{'updateSheetProperties': {
+            'properties': {'sheetId': sid, 'title': _tab_title(new_title)},
+            'fields': 'title'}}])
+        return {'id': sid, 'title': _tab_title(new_title)}
+
+    def delete_sheet(self, spreadsheet_id: str, sheet) -> dict:
+        """Delete a tab AND everything in it. Irreversible: callers confirm first."""
+        sid = self.sheet_id(spreadsheet_id, sheet)
+        self._batch(spreadsheet_id, [{'deleteSheet': {'sheetId': sid}}])
+        return {'id': sid, 'deleted': True}
+
+    def delete_rows(self, spreadsheet_id: str, sheet, start_row: int, end_row: int) -> dict:
+        """Delete rows `start_row`..`end_row` INCLUSIVE, 1-based as the sheet shows
+        them; the rows below move up. Irreversible: callers confirm first."""
+        start, end = int(start_row), int(end_row)
+        if start < 1 or end < start:
+            raise SheetsClientError(
+                f"rows: start_row >= 1 and end_row >= start_row (got {start}..{end})")
+        sid = self.sheet_id(spreadsheet_id, sheet)
+        self._batch(spreadsheet_id, [{'deleteDimension': {'range': {
+            'sheetId': sid, 'dimension': 'ROWS',
+            'startIndex': start - 1, 'endIndex': end}}}])
+        return {'id': sid, 'deleted_rows': end - start + 1, 'from_row': start, 'to_row': end}
+
+    def number_format(self, spreadsheet_id: str, range: str, pattern: str,
+                      type: str = 'NUMBER') -> dict:
+        """Apply a number format to every cell of an A1 range (`'Tab'!B2:D` ; a bare
+        range means the first tab). `type`: NUMBER | CURRENCY | PERCENT | DATE |
+        TIME | DATE_TIME | SCIENTIFIC | TEXT ; `pattern` as in the sheet UI
+        (`#,##0.00`, `0.0%`, `dd/mm/yyyy`)."""
+        kind = str(type).upper()
+        if kind not in _NUMBER_FORMAT_TYPES:
+            raise SheetsClientError(
+                f"type: one of {', '.join(_NUMBER_FORMAT_TYPES)} (got {type!r})")
+        grid = self._grid_range(spreadsheet_id, range)
+        self._batch(spreadsheet_id, [{'repeatCell': {
+            'range': grid,
+            'cell': {'userEnteredFormat': {'numberFormat': {'type': kind, 'pattern': pattern}}},
+            'fields': 'userEnteredFormat.numberFormat'}}])
+        return {'range': range, 'type': kind, 'pattern': pattern}
+
+    def _grid_range(self, spreadsheet_id: str, range: str) -> dict:
+        """An A1 range as a GridRange: tab resolved by title, open bounds left open."""
+        sheet, cells = _split_range(range)
+        title = sheet[:-1].strip("'").replace("''", "'") if sheet else None
+        if title:
+            sid = self.sheet_id(spreadsheet_id, title)
+        else:
+            tabs = self.get_metadata(spreadsheet_id)['sheets']
+            if not tabs:
+                raise SheetsClientError("the spreadsheet has no tab")
+            sid = tabs[0]['id']
+        grid: dict = {'sheetId': sid}
+        if cells:
+            start, _, end = cells.partition(':')
+            end = end or start
+            c0, r0 = _col_row(start)
+            c1, r1 = _col_row(end)
+            if c0 is not None:
+                grid['startColumnIndex'] = c0
+            if r0 is not None:
+                grid['startRowIndex'] = r0 - 1
+            if c1 is not None:
+                grid['endColumnIndex'] = c1 + 1
+            if r1 is not None:
+                grid['endRowIndex'] = r1
+        return grid
 
     def get_metadata(self, spreadsheet_id: str) -> dict:
         """Get spreadsheet metadata (title, sheets, etc.)."""
@@ -175,6 +292,32 @@ class SheetsClient:
         writer = csv.writer(output)
         writer.writerows(rows)
         return output.getvalue()
+
+
+_NUMBER_FORMAT_TYPES = ('NUMBER', 'CURRENCY', 'PERCENT', 'DATE', 'TIME',
+                        'DATE_TIME', 'SCIENTIFIC', 'TEXT')
+
+
+def _tab_title(title: str) -> str:
+    """A tab title, checked before it goes out: Google refuses an empty one or one
+    over 100 characters with a bare 400."""
+    t = str(title or '').strip()
+    if not t or len(t) > 100:
+        raise SheetsClientError("a tab title is 1 to 100 characters")
+    return t
+
+
+def _col_row(cell: str) -> tuple:
+    """`B5` → (1, 5) ; `B` → (1, None) ; `5` → (None, 5). 0-based column."""
+    letters = ''.join(c for c in cell if c.isalpha()).upper()
+    digits = ''.join(c for c in cell if c.isdigit())
+    col = None
+    if letters:
+        col = 0
+        for ch in letters:
+            col = col * 26 + (ord(ch) - 64)
+        col -= 1
+    return col, (int(digits) if digits else None)
 
 
 def values_from_csv(text: str, formulas: bool = False) -> List[List[Any]]:
