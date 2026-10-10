@@ -667,3 +667,45 @@ def test_une_redirection_est_refusee_jamais_suivie(monkeypatch):
     assert e.value.location == "https://ailleurs.test/v1/x"
     assert "SECRET" not in str(e.value)
     assert len(vus) == 1
+
+
+# ----------------------------------------------------------------------
+# Compte à sec — un 422 « insufficient credits » n'est pas un appel à corriger
+# ----------------------------------------------------------------------
+
+def _repond(status, body):
+    return patch("oto.tools.apollo.client.requests.request",
+                 side_effect=lambda m, u, **kw: _Resp(body, ok=False, status=status))
+
+
+@pytest.mark.parametrize("status, body", [
+    (422, {"error": "You have insufficient credits"}),
+    (422, {"error_message": "You ran out of mobile number credits"}),
+    (402, {"error": "Payment required"}),
+])
+def test_an_empty_account_is_named_and_carries_402(status, body):
+    from oto.tools.apollo import ApolloCreditsExhausted
+    client = ApolloClient(api_key="k")
+    with _repond(status, body):
+        with pytest.raises(ApolloCreditsExhausted) as e:
+            client.match_person(person_id="p1")
+    assert e.value.status_code == 402 and e.value.http_status == status
+    assert "Apollo" in str(e.value)
+
+
+def test_another_422_still_names_the_rejected_field():
+    from oto.tools.apollo import ApolloCreditsExhausted, ApolloError
+    client = ApolloClient(api_key="k")
+    with _repond(422, {"error": "organization_domains is invalid"}):
+        with pytest.raises(ApolloError) as e:
+            client.match_person(person_id="p1")
+    assert not isinstance(e.value, ApolloCreditsExhausted)
+    assert e.value.status_code == 422 and "organization_domains" in str(e.value)
+
+
+def test_the_poll_reads_an_empty_account_too():
+    from oto.tools.apollo import ApolloCreditsExhausted
+    client = ApolloClient(api_key="k")
+    with _repond(422, {"error": "You have insufficient credits"}):
+        with pytest.raises(ApolloCreditsExhausted):
+            client.poll_webhook_result("718432950164203900")

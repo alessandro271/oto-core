@@ -4,6 +4,7 @@ Apollo.io API Client for lead enrichment and search.
 Requires: requests
 """
 
+import re
 import time
 from typing import Optional, Dict, Any, List
 
@@ -27,6 +28,28 @@ class ApolloError(RuntimeError):
     def __init__(self, message: str, status_code: Optional[int] = None):
         super().__init__(message)
         self.status_code = status_code
+
+
+class ApolloCreditsExhausted(ApolloError):
+    """The Apollo ACCOUNT is out of credits — the call itself was right.
+
+    Apollo says so with a **422** "You have insufficient credits" (measured on
+    oto signals #1114, #1283, #1348), the status of a malformed request: read as
+    such, the caller is told to fix a call that was correct, and the key that
+    served it stays green. This error carries `status_code = 402` ON PURPOSE —
+    the status every consumer reads as "out of credit" (the oto backend's error
+    taxonomy marks the served key and answers `quota_exhausted`) — and keeps the
+    status Apollo really sent in `http_status`."""
+
+    def __init__(self, message: str, http_status: int):
+        super().__init__(message, status_code=402)
+        self.http_status = http_status
+
+
+#: Apollo's "account out of credits" message. A 402 is always one; a 422 only
+#: with THIS wording — any other 422 names a rejected field and stays fixable.
+_CREDITS_EXHAUSTED = re.compile(r"insufficient credits|ran out of \w+(?: \w+)? credits",
+                                re.I)
 
 
 class ApolloClient:
@@ -117,16 +140,23 @@ class ApolloClient:
             time.sleep(attendre)
         return response
 
+    def _error(self, response: requests.Response, endpoint: str) -> ApolloError:
+        """The error for a non-2xx answer, upstream message included — and
+        `ApolloCreditsExhausted` when it is the account that is empty, not the call
+        that is wrong."""
+        message = (f"Apollo {response.status_code} on {endpoint}: "
+                   f"{self._upstream_message(response)}")
+        if response.status_code == 402 or (
+                response.status_code == 422 and _CREDITS_EXHAUSTED.search(message)):
+            return ApolloCreditsExhausted(message, http_status=response.status_code)
+        return ApolloError(message, status_code=response.status_code)
+
     def _request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """Make API request. An HTTP error raises `ApolloError` carrying the
         UPSTREAM message (which field is rejected) — not an opaque "422 Client Error"."""
         response = self._send(method, endpoint, **kwargs)
         if not response.ok:
-            raise ApolloError(
-                f"Apollo {response.status_code} on {endpoint}: "
-                f"{self._upstream_message(response)}",
-                status_code=response.status_code,
-            )
+            raise self._error(response, endpoint)
         return response.json()
 
     def _request_tolerating(self, method: str, endpoint: str,
@@ -145,11 +175,7 @@ class ApolloClient:
         """
         response = self._send(method, endpoint, **kwargs)
         if not response.ok and response.status_code not in tolere:
-            raise ApolloError(
-                f"Apollo {response.status_code} on {endpoint}: "
-                f"{self._upstream_message(response)}",
-                status_code=response.status_code,
-            )
+            raise self._error(response, endpoint)
         try:
             return response.status_code, response.json()
         except ValueError:

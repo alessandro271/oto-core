@@ -1,5 +1,5 @@
 """Apollo.io API client for lead enrichment and search."""
 
-from .client import ApolloClient
+from .client import ApolloClient, ApolloCreditsExhausted, ApolloError
 
-__all__ = ["ApolloClient"]
+__all__ = ["ApolloClient", "ApolloCreditsExhausted", "ApolloError"]
