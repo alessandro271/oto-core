@@ -187,7 +187,7 @@ export const listCategories = defineFunction({
   name: "pennylane.list_categories",
   connector: "pennylane",
   class: "read",
-  description: "List the analytical categories (expense and revenue categories).",
+  description: "List the analytical categories (expense and revenue categories), each in one group (an analytical axis, see list_category_groups). Scope categories:readonly.",
   schema: {
     "type": "object",
     "additionalProperties": false,
@@ -238,6 +238,164 @@ export const listCategories = defineFunction({
     body: {},
     headers: {},
     encode: {"filter": "json"},
+  },
+  pagination: { kind: "cursor", requestParam: "cursor", next: "next_cursor", more: "has_more", maxPages: 10 },
+  output: { items: "items" },
+  cost: { per: "request" },
+})
+
+export const listCategoryGroups = defineFunction({
+  name: "pennylane.list_category_groups",
+  connector: "pennylane",
+  class: "read",
+  description: "List the category groups, the analytical axes ({id, label}): a category belongs to one group, and the weights an object carries within one group sum to 1. Scope categories:readonly.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100},
+      "cursor": {"type": "string", "description": "next_cursor of the previous page."},
+      "all_pages": {"type": "boolean", "description": "Read the following pages too, up to max_pages (at most 10)."},
+      "max_pages": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 10,
+        "description": "Pages read when all_pages is true."
+      }
+    }
+  },
+  examples: [
+    { title: "All analytical axes", input: {} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/category_groups",
+    pathParams: [],
+    query: {"limit": "limit", "cursor": "cursor"},
+    body: {},
+    headers: {},
+  },
+  pagination: { kind: "cursor", requestParam: "cursor", next: "next_cursor", more: "has_more", maxPages: 10 },
+  output: { items: "items" },
+  cost: { per: "request" },
+})
+
+export const listSupplierInvoiceCategories = defineFunction({
+  name: "pennylane.list_supplier_invoice_categories",
+  connector: "pennylane",
+  class: "read",
+  description: "List the analytical categories of one supplier invoice, each with its weight (a string between 0 and 1). Scope supplier_invoices:readonly.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["supplier_invoice_id"],
+    "properties": {
+      "supplier_invoice_id": {"type": "integer"},
+      "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100},
+      "cursor": {"type": "string", "description": "next_cursor of the previous page."},
+      "all_pages": {"type": "boolean", "description": "Read the following pages too, up to max_pages (at most 10)."},
+      "max_pages": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 10,
+        "description": "Pages read when all_pages is true."
+      }
+    }
+  },
+  examples: [
+    { title: "Categories of a supplier invoice", input: {"supplier_invoice_id": 1234} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/supplier_invoices/{supplier_invoice_id}/categories",
+    pathParams: ["supplier_invoice_id"],
+    query: {"limit": "limit", "cursor": "cursor"},
+    body: {},
+    headers: {},
+  },
+  pagination: { kind: "cursor", requestParam: "cursor", next: "next_cursor", more: "has_more", maxPages: 10 },
+  output: { items: "items" },
+  cost: { per: "request" },
+})
+
+export const listCustomerInvoiceCategories = defineFunction({
+  name: "pennylane.list_customer_invoice_categories",
+  connector: "pennylane",
+  class: "read",
+  description: "List the analytical categories of one customer invoice, each with its weight (a string between 0 and 1). Scope customer_invoices:readonly.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["customer_invoice_id"],
+    "properties": {
+      "customer_invoice_id": {"type": "integer"},
+      "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100},
+      "cursor": {"type": "string", "description": "next_cursor of the previous page."},
+      "all_pages": {"type": "boolean", "description": "Read the following pages too, up to max_pages (at most 10)."},
+      "max_pages": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 10,
+        "description": "Pages read when all_pages is true."
+      }
+    }
+  },
+  examples: [
+    { title: "Categories of a customer invoice", input: {"customer_invoice_id": 1234} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/customer_invoices/{customer_invoice_id}/categories",
+    pathParams: ["customer_invoice_id"],
+    query: {"limit": "limit", "cursor": "cursor"},
+    body: {},
+    headers: {},
+  },
+  pagination: { kind: "cursor", requestParam: "cursor", next: "next_cursor", more: "has_more", maxPages: 10 },
+  output: { items: "items" },
+  cost: { per: "request" },
+})
+
+export const listLedgerEntryLineCategories = defineFunction({
+  name: "pennylane.list_ledger_entry_line_categories",
+  connector: "pennylane",
+  class: "read",
+  description: "List the analytical categories of one ledger entry line, each with its weight (a string between 0 and 1). The line ids come from list_ledger_entry_lines. Scope ledger_entries:readonly.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["ledger_entry_line_id"],
+    "properties": {
+      "ledger_entry_line_id": {"type": "integer"},
+      "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100},
+      "cursor": {"type": "string", "description": "next_cursor of the previous page."},
+      "all_pages": {"type": "boolean", "description": "Read the following pages too, up to max_pages (at most 10)."},
+      "max_pages": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10,
+        "default": 10,
+        "description": "Pages read when all_pages is true."
+      }
+    }
+  },
+  examples: [
+    { title: "Categories of a ledger entry line", input: {"ledger_entry_line_id": 1234} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/ledger_entry_lines/{ledger_entry_line_id}/categories",
+    pathParams: ["ledger_entry_line_id"],
+    query: {"limit": "limit", "cursor": "cursor"},
+    body: {},
+    headers: {},
   },
   pagination: { kind: "cursor", requestParam: "cursor", next: "next_cursor", more: "has_more", maxPages: 10 },
   output: { items: "items" },
@@ -2519,7 +2677,7 @@ export const connector = defineConnector({
   name: "pennylane",
   label: "Pennylane",
   namespace: "pennylane",
-  version: "2.0.0",
+  version: "2.1.0",
   apiVersion: "v2",
   baseUrl: "https://app.pennylane.com/api/external/v2",
   auth: {"kind": "bearer", "token": "api_key"},
@@ -2544,6 +2702,10 @@ export const connector = defineConnector({
     listLedgerAccounts,
     listJournals,
     listCategories,
+    listCategoryGroups,
+    listSupplierInvoiceCategories,
+    listCustomerInvoiceCategories,
+    listLedgerEntryLineCategories,
     listInvoiceTemplates,
     listProducts,
     getProduct,

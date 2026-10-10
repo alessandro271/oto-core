@@ -29,6 +29,7 @@ import requests
 from ..common.credentials import require
 from ..common import FieldFilter
 from ..common.errors import raise_for_upstream
+from .analytics import AnalyticsMixin
 from .ledger import LedgerMixin
 from .quotes import QuotesMixin
 from .supplier_invoices import SupplierInvoicesMixin
@@ -49,13 +50,15 @@ def _is_outstanding(transaction) -> bool:
         return True
 
 
-class PennylaneClient(LedgerMixin, QuotesMixin, SupplierInvoicesMixin):
+class PennylaneClient(AnalyticsMixin, LedgerMixin, QuotesMixin, SupplierInvoicesMixin):
     """Client for Pennylane API v2.
 
     The general ledger (entries, journals, line matching) lives in
     `LedgerMixin` — same split as `brevo`, see `ledger.py`; quotes in
     `QuotesMixin` (`quotes.py`); import, correction and validation of
-    supplier invoices in `SupplierInvoicesMixin` (`supplier_invoices.py`).
+    supplier invoices in `SupplierInvoicesMixin` (`supplier_invoices.py`);
+    analytical groups and categories, and categorizing an invoice or a
+    ledger entry line, in `AnalyticsMixin` (`analytics.py`).
     """
 
     BASE_URL = "https://app.pennylane.com/api/external/v2"
@@ -82,7 +85,7 @@ class PennylaneClient(LedgerMixin, QuotesMixin, SupplierInvoicesMixin):
         })
 
     def _appel(self, methode: str, endpoint: str, *, params: Optional[dict] = None,
-               data: Optional[dict] = None, retries: int = 3) -> dict:
+               data: Optional[dict | list] = None, retries: int = 3) -> dict:
         """ONE call to the API, and the only place that translates a refusal.
 
         An upstream refusal is an **exception**, never a return value. This
@@ -240,10 +243,6 @@ class PennylaneClient(LedgerMixin, QuotesMixin, SupplierInvoicesMixin):
     def get_supplier_invoices(self, max_pages: Optional[int] = None) -> list:
         """Get supplier invoices."""
         return self.fetch_all_pages("supplier_invoices", max_pages=max_pages)
-
-    def get_categories(self) -> list:
-        """Get expense categories."""
-        return self.fetch("categories")
 
     def get_transactions(self, max_pages: Optional[int] = None,
                          period_start: Optional[str] = None,

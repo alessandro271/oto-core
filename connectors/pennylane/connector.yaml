@@ -11,7 +11,8 @@
 #
 # Not described here: uploading a file (multipart POST /file_attachments) and
 # importing a supplier invoice from it (POST /supplier_invoices/import), which
-# depend on that upload.
+# depend on that upload; categorizing an invoice or a ledger entry line
+# (PUT .../categories), whose body is a list at the top level.
 #
 # The filter query parameter is a JSON array serialised as a string:
 # [{"field": "date", "operator": "gteq", "value": "2026-01-01"}]. The agent passes
@@ -20,7 +21,7 @@ connector:
   name: pennylane
   label: Pennylane
   namespace: pennylane
-  version: 2.0.0
+  version: 2.1.0
   api_version: v2
   base_url: https://app.pennylane.com/api/external/v2
   auth:
@@ -188,7 +189,9 @@ functions:
   - name: list_categories
     class: read
     description: >-
-      List the analytical categories (expense and revenue categories).
+      List the analytical categories (expense and revenue categories), each
+      in one group (an analytical axis, see list_category_groups). Scope
+      categories:readonly.
     input:
       type: object
       additionalProperties: false
@@ -220,6 +223,102 @@ functions:
       path: /categories
       query: { filter: filter, limit: limit, cursor: cursor }
       encode: { filter: json }
+    pagination: *pagination
+    output: *list_output
+    cost: { per: request }
+
+  - name: list_category_groups
+    class: read
+    description: >-
+      List the category groups, the analytical axes ({id, label}): a
+      category belongs to one group, and the weights an object carries
+      within one group sum to 1. Scope categories:readonly.
+    input:
+      type: object
+      additionalProperties: false
+      properties:
+        limit: *limit
+        cursor: *cursor
+    examples:
+      - title: All analytical axes
+        input: {}
+    call:
+      method: GET
+      path: /category_groups
+      query: { limit: limit, cursor: cursor }
+    pagination: *pagination
+    output: *list_output
+    cost: { per: request }
+
+  - name: list_supplier_invoice_categories
+    class: read
+    description: >-
+      List the analytical categories of one supplier invoice, each with its
+      weight (a string between 0 and 1). Scope supplier_invoices:readonly.
+    input:
+      type: object
+      additionalProperties: false
+      required: [supplier_invoice_id]
+      properties:
+        supplier_invoice_id: { type: integer }
+        limit: *limit
+        cursor: *cursor
+    examples:
+      - title: Categories of a supplier invoice
+        input: { supplier_invoice_id: 1234 }
+    call:
+      method: GET
+      path: /supplier_invoices/{supplier_invoice_id}/categories
+      query: { limit: limit, cursor: cursor }
+    pagination: *pagination
+    output: *list_output
+    cost: { per: request }
+
+  - name: list_customer_invoice_categories
+    class: read
+    description: >-
+      List the analytical categories of one customer invoice, each with its
+      weight (a string between 0 and 1). Scope customer_invoices:readonly.
+    input:
+      type: object
+      additionalProperties: false
+      required: [customer_invoice_id]
+      properties:
+        customer_invoice_id: { type: integer }
+        limit: *limit
+        cursor: *cursor
+    examples:
+      - title: Categories of a customer invoice
+        input: { customer_invoice_id: 1234 }
+    call:
+      method: GET
+      path: /customer_invoices/{customer_invoice_id}/categories
+      query: { limit: limit, cursor: cursor }
+    pagination: *pagination
+    output: *list_output
+    cost: { per: request }
+
+  - name: list_ledger_entry_line_categories
+    class: read
+    description: >-
+      List the analytical categories of one ledger entry line, each with its
+      weight (a string between 0 and 1). The line ids come from
+      list_ledger_entry_lines. Scope ledger_entries:readonly.
+    input:
+      type: object
+      additionalProperties: false
+      required: [ledger_entry_line_id]
+      properties:
+        ledger_entry_line_id: { type: integer }
+        limit: *limit
+        cursor: *cursor
+    examples:
+      - title: Categories of a ledger entry line
+        input: { ledger_entry_line_id: 1234 }
+    call:
+      method: GET
+      path: /ledger_entry_lines/{ledger_entry_line_id}/categories
+      query: { limit: limit, cursor: cursor }
     pagination: *pagination
     output: *list_output
     cost: { per: request }
