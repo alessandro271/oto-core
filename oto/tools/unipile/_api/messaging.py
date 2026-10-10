@@ -17,6 +17,18 @@ from ..errors import UnipileError
 logger = logging.getLogger(__name__)
 
 
+def _nom_du_fil(it: dict) -> Optional[str]:
+    """The counterpart's name a flat-channel thread carries in its `user` object: the
+    phone's contact name first (what the account owner calls them), then the name they
+    display. None if the thread has no `user` (a group)."""
+    user = it.get("user")
+    if not isinstance(user, dict):
+        return None
+    specifics = user.get("specifics")
+    contact = specifics.get("contact_name") if isinstance(specifics, dict) else None
+    return contact or user.get("display_name") or None
+
+
 class _MessagingMixin:
     """Messaging: inboxes, threads, messages, participants, thread state."""
 
@@ -99,11 +111,24 @@ class _MessagingMixin:
             if isinstance(data, dict):
                 data["attendee_names"] = {"status": status, **kw}
 
+        # The flat channels (WhatsApp & co.) carry no `attendee_provider_id`: their
+        # 1-to-1 thread names its counterpart in a `user` object (`display_name`, and
+        # `specifics.contact_name` = the name saved in the phone's contacts). Signal
+        # 1358 (05/10/2026): the enrichment answered « unavailable » for every
+        # WhatsApp thread while each one carried its name. No contacts call needed.
+        nommes = 0
+        for it in items:
+            if (isinstance(it, dict) and not it.get("attendee_provider_id")
+                    and "attendee_name" not in it):
+                nom = _nom_du_fil(it)
+                if nom:
+                    it["attendee_name"] = nom
+                    nommes += 1
         ids = {str(it.get("attendee_provider_id"))
                for it in items
                if isinstance(it, dict) and it.get("attendee_provider_id")}
         if not ids:
-            if items:
+            if items and not nommes:
                 _dire("unavailable", asked=0, resolved=0,
                       reason="no thread carries an `attendee_provider_id`: nothing to "
                              "resolve. The counterpart's name remains readable in "

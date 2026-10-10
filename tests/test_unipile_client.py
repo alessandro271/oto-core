@@ -947,6 +947,27 @@ def test_tout_resolu_ne_dit_RIEN(monkeypatch):
     assert "attendee_names" not in out
 
 
+def test_un_fil_whatsapp_se_nomme_par_son_objet_user():
+    """Signal 1358 : les canaux plats (WhatsApp) ne portent pas d'`attendee_provider_id`
+    mais nomment l'interlocuteur dans `user`. L'enrichissement répondait « unavailable »
+    pour tous les fils, alors que chacun portait son nom — sans appel au carnet."""
+    chats = {"items": [
+        {"id": "c1", "user": {"display_name": "Camille",
+                              "specifics": {"contact_name": "Camille (atelier)"}}},
+        {"id": "c2", "user": {"display_name": "Dominique"}},
+        {"id": "g1", "name": "Groupe"},
+    ]}
+    c = _seq_client([("GET", "/acc/chats", chats)])
+    c.provider = "WHATSAPP"
+    out = c.list_chats(limit=20, with_attendee_names=True)
+    by_id = {it["id"]: it for it in out["items"]}
+    assert by_id["c1"]["attendee_name"] == "Camille (atelier)", "le nom du carnet prime"
+    assert by_id["c2"]["attendee_name"] == "Dominique"
+    assert "attendee_name" not in by_id["g1"], "un groupe n'a pas d'interlocuteur"
+    assert "attendee_names" not in out, "tout est nommé : rien à signaler"
+    assert all("/contacts" not in call["path"] for call in c._calls)
+
+
 def test_resolve_attendee_names_stops_early_when_all_resolved():
     page1 = {"items": [{"provider_id": "A", "name": "Ann"}], "cursor": "NEXT"}
     c = _seq_client([("GET", "/acc/contacts", page1)])
