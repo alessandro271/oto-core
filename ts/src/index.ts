@@ -7,6 +7,7 @@ import * as klaviyo from "./klaviyo"
 import * as mailpool from "./mailpool"
 import * as metaAds from "./meta_ads"
 import * as microsoft from "./microsoft"
+import * as modjo from "./modjo"
 import * as nextmotion from "./nextmotion"
 import * as notion from "./notion"
 import * as pennylane from "./pennylane"
@@ -24,6 +25,7 @@ export { klaviyo }
 export { mailpool }
 export { metaAds }
 export { microsoft }
+export { modjo }
 export { nextmotion }
 export { notion }
 export { pennylane }
@@ -43,6 +45,7 @@ export const connectors: readonly Connector[] = [
   mailpool.connector,
   metaAds.connector,
   microsoft.connector,
+  modjo.connector,
   nextmotion.connector,
   notion.connector,
   pennylane.connector,
