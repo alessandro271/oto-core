@@ -13,7 +13,8 @@ Three rules upheld here:
   whose `token_uri` differs is refused at read time.
 - **The secret never leaves.** The assertion goes in the body (`data=`), never in the
   query string; no `raise_for_status()` (its message embeds the URL); the
-  message of a refusal only quotes what Google answered, never the request.
+  message of a refusal only quotes what Google answered, never the request; a 3xx
+  is refused, never followed (a 307/308 would replay the body to another host).
 - **Process-wide cache, keyed by credential.** The server builds one client per
   tool call: a cache held by the instance would never serve. The cache key
   is a FINGERPRINT (sha256) of the credential and the scope — never a plaintext secret
@@ -31,6 +32,7 @@ import requests
 from google.auth import crypt, jwt
 
 from ..common import UpstreamHTTPError
+from ..http.client import refuse_redirect
 
 #: The only token endpoint accepted (see the module docstring).
 TOKEN_URI = "https://oauth2.googleapis.com/token"
@@ -151,7 +153,9 @@ def access_token(key: dict, *, session: requests.Session,
         # in a URL (exception message, logs, Sentry).
         data={"grant_type": _JWT_BEARER, "assertion": _signed_assertion(key, scope, now)},
         timeout=_TOKEN_TIMEOUT,
+        allow_redirects=False,  # a 307/308 would replay the signed assertion to another host
     )
+    refuse_redirect(resp)
     if resp.status_code >= 400:
         try:
             payload = resp.json()

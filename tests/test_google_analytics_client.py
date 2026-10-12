@@ -55,10 +55,10 @@ class _Transport(BaseAdapter):
     def __init__(self):
         super().__init__()
         self.sent: list[requests.PreparedRequest] = []
-        self.routes: dict[tuple[str, str], list[tuple[int, object]]] = {}
+        self.routes: dict[tuple[str, str], list[tuple[int, object, dict]]] = {}
 
-    def on(self, method: str, path: str, status: int, body) -> None:
-        self.routes.setdefault((method, path), []).append((status, body))
+    def on(self, method: str, path: str, status: int, body, headers=None) -> None:
+        self.routes.setdefault((method, path), []).append((status, body, headers or {}))
 
     def send(self, request, **kwargs):
         self.sent.append(request)
@@ -67,11 +67,12 @@ class _Transport(BaseAdapter):
         queue = self.routes.get((request.method, path))
         if not queue:
             raise AssertionError(f"requête inattendue : {request.method} {request.url}")
-        status, body = queue.pop(0) if len(queue) > 1 else queue[0]
+        status, body, headers = queue.pop(0) if len(queue) > 1 else queue[0]
         resp = requests.Response()
         resp.status_code = status
         resp._content = json.dumps(body).encode()
         resp.headers["Content-Type"] = "application/json"
+        resp.headers.update(headers)
         resp.url = request.url
         resp.request = request
         return resp
@@ -166,11 +167,26 @@ def test_le_jeton_est_mis_en_cache_process_wide(key, transport):
 
 def test_un_refus_du_serveur_de_jetons_est_un_refus_de_credential(client, transport):
     transport.routes[("POST", "/token")] = [(400, {"error": "invalid_grant",
-                                                   "error_description": "Invalid JWT Signature."})]
+                                                   "error_description": "Invalid JWT Signature."},
+                                              {})]
     with pytest.raises(ServiceAccountAuthError) as ei:
         client.account_summaries()
     assert ei.value.status_code == 401 and ei.value.upstream_status == 400
     assert "assertion" not in str(ei.value)
+
+
+def test_une_307_du_serveur_de_jetons_n_emporte_pas_l_assertion(client, transport):
+    """Un 307/308 rejouerait le corps (l'assertion signée) vers l'hôte du `Location` :
+    la réponse 3xx est refusée, jamais suivie, et rien d'autre ne part."""
+    from oto.tools.http import RedirectRefused
+    transport.routes[("POST", "/token")] = [
+        (307, {}, {"Location": "https://ailleurs.test/token?assertion=SECRET#f"})]
+    with pytest.raises(RedirectRefused) as ei:
+        client.account_summaries()
+    assert ei.value.location == "https://ailleurs.test/token"
+    assert "SECRET" not in str(ei.value) and "assertion" not in str(ei.value)
+    assert len(transport.sent) == 1 and "ailleurs.test" not in transport.sent[0].url
+    assert ga_auth._TOKEN_CACHE == {}
 
 
 # --- Admin ------------------------------------------------------------------
