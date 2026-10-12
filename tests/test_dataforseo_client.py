@@ -126,7 +126,7 @@ def test_account_reads_are_get_without_body(capture):
 
 
 @pytest.mark.parametrize("code,http", [
-    (40100, 401), (40200, 402), (40210, 402), (40202, 429), (40400, 404),
+    (40100, 401), (40104, 403), (40200, 402), (40210, 402), (40202, 429), (40400, 404),
     (40501, 400), (40000, 400), (50000, 502), (None, 502),
 ])
 def test_task_error_in_200_body_is_typed(capture, code, http):

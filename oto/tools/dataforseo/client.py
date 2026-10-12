@@ -14,7 +14,7 @@ client always sends exactly one task and returns that task's envelope.
 **Errors live in the body, not the HTTP status.** DataForSEO answers HTTP 200
 with a five-digit `status_code` at two levels — the request and each task
 (`20000` = OK). A non-20000 at either level raises `UpstreamHTTPError`, with
-the HTTP-like status derived from the five-digit code (`40100` → 401,
+the HTTP-like status derived from the five-digit code (`40100` → 401, other `401xx` → 403,
 `40200`/`40210` → 402, `40400` → 404, `40202`/`429xx` → 429, `5xxxx` → 502,
 any other `4xxxx` → 400) and the original code kept in the body.
 
@@ -44,8 +44,10 @@ def _http_status(code: Any) -> int:
         c = int(code)
     except (TypeError, ValueError):
         return 502
-    if 40100 <= c < 40200:
+    if c == 40100:
         return 401
+    if 40100 < c < 40200:  # access refused for a valid login (e.g. 40104: account not verified)
+        return 403
     if 40200 <= c < 40300 and c != 40202:
         return 402
     if c == 40202 or 42900 <= c < 43000:
