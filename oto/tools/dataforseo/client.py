@@ -4,9 +4,10 @@ REST API v3, HTTP Basic auth (API login + API password from the DataForSEO
 dashboard — not the account's sign-in password). Pay-as-you-go: every call
 draws on a prepaid USD balance.
 
-Only the synchronous **live** endpoints are wrapped: one POST, one answer. The
-queued `task_post`/`task_get` flavour is cheaper per item but needs polling,
-which a per-call client cannot carry.
+The synchronous **live** endpoints are wrapped: one POST, one answer. The one
+exception is the site crawl (`onpage_crawl_start`), which only exists queued:
+it returns a task id (status `20100`), read back with `onpage_summary` and the
+`onpage_*` reports — the caller polls.
 
 **Request shape.** Every POST endpoint takes an ARRAY of task objects; this
 client always sends exactly one task and returns that task's envelope.
@@ -32,10 +33,12 @@ import requests
 from ..common.credentials import require
 from ..common import UpstreamHTTPError, raise_for_upstream
 from ..http.client import refuse_redirect
-from ._api import BacklinksMixin, DomainsMixin, KeywordsMixin
+from ._api import (AiMixin, BacklinksMixin, ContentMixin, DomainsMixin, KeywordsMixin,
+                   OnPageMixin, TechnologiesMixin)
 
 _HTTP_TIMEOUT = (10, 90)  # (connect, read) — Labs/backlinks live calls can take ~30 s
 _OK = 20000
+_CREATED = 20100  # a queued task (site crawl) was accepted
 
 
 def _http_status(code: Any) -> int:
@@ -59,15 +62,16 @@ def _http_status(code: Any) -> int:
     return 502
 
 
-def _check(status_code: Any, status_message: Any) -> None:
-    if status_code != _OK:
+def _check(status_code: Any, status_message: Any, ok=(_OK,)) -> None:
+    if status_code not in ok:
         raise UpstreamHTTPError(
             _http_status(status_code),
             {"status_code": status_code, "status_message": status_message},
             service="dataforseo")
 
 
-class DataForSeoClient(KeywordsMixin, DomainsMixin, BacklinksMixin):
+class DataForSeoClient(KeywordsMixin, DomainsMixin, BacklinksMixin, AiMixin, OnPageMixin,
+                       TechnologiesMixin, ContentMixin):
     """Client DataForSEO (https://api.dataforseo.com/v3), HTTP Basic auth."""
 
     BASE_URL = "https://api.dataforseo.com/v3"
@@ -99,7 +103,8 @@ class DataForSeoClient(KeywordsMixin, DomainsMixin, BacklinksMixin):
         """Drops keys set to None — the API then applies ITS defaults."""
         return {k: v for k, v in body.items() if v is not None}
 
-    def _task(self, method: str, path: str, task: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _task(self, method: str, path: str, task: Optional[Dict[str, Any]] = None,
+              ok=(_OK,)) -> Dict[str, Any]:
         body = self._request(method, path,
                              json=[self._compact(task)] if task is not None else None)
         tasks = body.get("tasks") or []
@@ -107,7 +112,7 @@ class DataForSeoClient(KeywordsMixin, DomainsMixin, BacklinksMixin):
             raise UpstreamHTTPError(502, {"status_message": "no task in the response"},
                                     service="dataforseo")
         t = tasks[0]
-        _check(t.get("status_code"), t.get("status_message"))
+        _check(t.get("status_code"), t.get("status_message"), ok)
         return t
 
     def _live(self, path: str, task: Dict[str, Any]) -> Dict[str, Any]:

@@ -112,3 +112,45 @@ class DomainsMixin:
         task = self._location({"targets": targets}, location_code, location_name,
                               language_code, language_name)
         return self._live(f"{_LABS}/bulk_traffic_estimation/live", {**task, **(options or {})})
+
+    def historical_rank_overview(
+        self, target: str, location_code: Optional[int] = None,
+        location_name: Optional[str] = None, language_code: Optional[str] = None,
+        language_name: Optional[str] = None, date_from: Optional[str] = None,
+        date_to: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """POST /dataforseo_labs/google/historical_rank_overview/live — the domain's
+        ranking keyword counts and estimated traffic, month by month. Location and
+        language required. Dates `yyyy-mm-dd`."""
+        task = self._location({"target": target, "date_from": date_from, "date_to": date_to},
+                              location_code, location_name, language_code, language_name)
+        return self._live(f"{_LABS}/historical_rank_overview/live", task)
+
+    def serp_competitors(
+        self, keywords: List[str], location_code: Optional[int] = None,
+        location_name: Optional[str] = None, language_code: Optional[str] = None,
+        language_name: Optional[str] = None, limit: Optional[int] = None,
+        offset: Optional[int] = None, filters: Optional[list] = None,
+        order_by: Optional[List[str]] = None, options: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """POST /dataforseo_labs/google/serp_competitors/live — the domains that
+        rank for a set of keywords (max 200), with their average position and
+        visibility. Location and language required."""
+        task = self._location({"keywords": keywords, "limit": limit, "offset": offset,
+                               "filters": filters, "order_by": order_by},
+                              location_code, location_name, language_code, language_name)
+        return self._live(f"{_LABS}/serp_competitors/live", {**task, **(options or {})})
+
+    def subdomains(
+        self, target: str, location_code: Optional[int] = None,
+        location_name: Optional[str] = None, language_code: Optional[str] = None,
+        language_name: Optional[str] = None, limit: Optional[int] = None,
+        offset: Optional[int] = None, filters: Optional[list] = None,
+        order_by: Optional[List[str]] = None, options: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """POST /dataforseo_labs/google/subdomains/live — a domain's subdomains
+        with their ranking keywords and estimated traffic."""
+        task = self._location({"target": target, "limit": limit, "offset": offset,
+                               "filters": filters, "order_by": order_by},
+                              location_code, location_name, language_code, language_name)
+        return self._live(f"{_LABS}/subdomains/live", {**task, **(options or {})})

@@ -104,3 +104,19 @@ class KeywordsMixin:
                               location_code, location_name, language_code, language_name)
         return self._live("/keywords_data/google_ads/search_volume/live",
                           {**task, **(options or {})})
+
+    def google_trends_explore(
+        self, keywords: List[str], location_code: Optional[int] = None,
+        location_name: Optional[str] = None, language_code: Optional[str] = None,
+        language_name: Optional[str] = None, date_from: Optional[str] = None,
+        date_to: Optional[str] = None, time_range: Optional[str] = None,
+        type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """POST /keywords_data/google_trends/explore/live — Google Trends interest
+        over time for up to 5 keywords, compared (0-100). No location = worldwide.
+        `time_range`: `past_hour` … `past_12_months`, `past_5_years`; or dates.
+        `type`: `web` (default) | `news` | `youtube` | `images` | `froogle`."""
+        task = self._location({"keywords": keywords, "date_from": date_from,
+                               "date_to": date_to, "time_range": time_range, "type": type},
+                              location_code, location_name, language_code, language_name)
+        return self._live("/keywords_data/google_trends/explore/live", task)

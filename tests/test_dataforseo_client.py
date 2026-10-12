@@ -166,3 +166,81 @@ def test_redirect_is_refused(capture):
     capture["reply"] = _Resp(302, {}, headers={"Location": "https://elsewhere.example/x"})
     with pytest.raises(RedirectRefused):
         _client().user_data()
+
+
+@pytest.mark.parametrize("method,args,path", [
+    ("google_trends_explore", (["a"],), "/keywords_data/google_trends/explore/live"),
+    ("historical_rank_overview", ("a.com",), "/dataforseo_labs/google/historical_rank_overview/live"),
+    ("serp_competitors", (["a"],), "/dataforseo_labs/google/serp_competitors/live"),
+    ("subdomains", ("a.com",), "/dataforseo_labs/google/subdomains/live"),
+    ("backlinks_competitors", ("a.com",), "/backlinks/competitors/live"),
+    ("backlinks_history", ("a.com",), "/backlinks/history/live"),
+    ("backlinks_new_lost", ("a.com",), "/backlinks/timeseries_new_lost_summary/live"),
+    ("backlinks_domain_pages", ("a.com",), "/backlinks/domain_pages/live"),
+    ("llm_mentions_search", ([{"domain": "a.com"}],), "/ai_optimization/llm_mentions/search_mentions/live"),
+    ("llm_mentions_metrics", ([{"domain": "a.com"}],), "/ai_optimization/llm_mentions/target_metrics/live"),
+    ("llm_mentions_top_domains", ([{"keyword": "a"}],), "/ai_optimization/llm_mentions/top_mentioned_domains/live"),
+    ("llm_mentions_top_pages", ([{"keyword": "a"}],), "/ai_optimization/llm_mentions/top_mentioned_pages/live"),
+    ("llm_mentions_history", ([{"domain": "a.com"}],), "/ai_optimization/llm_mentions/historical/live"),
+    ("google_ai_mode", ("a",), "/serp/google/ai_mode/live/advanced"),
+    ("ai_keyword_search_volume", (["a"],), "/ai_optimization/ai_keyword_data/keywords_search_volume/live"),
+    ("onpage_instant", ("https://a.com",), "/on_page/instant_pages"),
+    ("onpage_content", ("https://a.com",), "/on_page/content_parsing/live"),
+    ("lighthouse", ("https://a.com",), "/on_page/lighthouse/live/json"),
+    ("onpage_pages", ("t1",), "/on_page/pages"),
+    ("onpage_non_indexable", ("t1",), "/on_page/non_indexable"),
+    ("onpage_duplicate_tags", ("t1",), "/on_page/duplicate_tags"),
+    ("onpage_links", ("t1",), "/on_page/links"),
+    ("onpage_redirect_chains", ("t1",), "/on_page/redirect_chains"),
+    ("domain_technologies", ("a.com",), "/domain_analytics/technologies/domain_technologies/live"),
+    ("domains_by_technology", (["Shopify"],), "/domain_analytics/technologies/domains_by_technology/live"),
+    ("technologies_summary", (["Shopify"],), "/domain_analytics/technologies/technologies_summary/live"),
+    ("content_search", ("acme",), "/content_analysis/search/live"),
+    ("content_summary", ("acme",), "/content_analysis/summary/live"),
+])
+def test_paths_more(capture, method, args, path):
+    getattr(_client(), method)(*args)
+    call = capture["calls"][0]
+    assert (call["method"], call["url"]) == ("POST", BASE + path)
+    assert isinstance(call["kwargs"]["json"], list) and len(call["kwargs"]["json"]) == 1
+
+
+def test_llm_response_path_per_engine(capture):
+    _client().llm_response("perplexity", "best crm?", "sonar")
+    call = capture["calls"][0]
+    assert call["url"] == f"{BASE}/ai_optimization/perplexity/llm_responses/live"
+    assert call["kwargs"]["json"] == [{"user_prompt": "best crm?", "model_name": "sonar"}]
+    with pytest.raises(ValueError):
+        _client().llm_response("copilot", "x", "y")
+
+
+def test_intersection_targets_are_numbered(capture):
+    _client().backlinks_intersection(["a.com", "b.com"], exclude_targets=["me.com"])
+    task = capture["calls"][0]["kwargs"]["json"][0]
+    assert task["targets"] == {"1": "a.com", "2": "b.com"}
+    assert task["exclude_targets"] == ["me.com"]
+
+
+def test_crawl_start_accepts_task_created(capture):
+    body = _ok(result=None, cost=0.00075)
+    body["tasks"][0]["status_code"] = 20100
+    capture["reply"] = _Resp(200, body)
+    t = _client().onpage_crawl_start("a.com", 5)
+    assert t["cost"] == 0.00075
+    assert capture["calls"][0]["kwargs"]["json"] == [{"target": "a.com", "max_crawl_pages": 5}]
+
+
+def test_task_created_is_an_error_on_a_live_call(capture):
+    body = _ok()
+    body["tasks"][0]["status_code"] = 20100
+    capture["reply"] = _Resp(200, body)
+    with pytest.raises(UpstreamHTTPError):
+        _client().backlinks_summary("a.com")
+
+
+def test_summary_is_a_get(capture):
+    _client().onpage_summary("t1")
+    _client().llm_models("chat_gpt")
+    assert [(c["method"], c["url"]) for c in capture["calls"]] == [
+        ("GET", f"{BASE}/on_page/summary/t1"),
+        ("GET", f"{BASE}/ai_optimization/chat_gpt/llm_responses/models")]

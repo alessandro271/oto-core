@@ -58,3 +58,55 @@ class BacklinksMixin:
         """POST /backlinks/bulk_ranks/live — the backlink rank of up to 1000
         domains, subdomains or pages in one call."""
         return self._live(f"{_BL}/bulk_ranks/live", {"targets": targets, **(options or {})})
+
+    def backlinks_competitors(
+        self, target: str, limit: Optional[int] = None, offset: Optional[int] = None,
+        filters: Optional[list] = None, order_by: Optional[List[str]] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """POST /backlinks/competitors/live — domains sharing the most backlinks
+        with the target."""
+        return self._live(f"{_BL}/competitors/live", {
+            "target": target, "limit": limit, "offset": offset, "filters": filters,
+            "order_by": order_by, **(options or {})})
+
+    def backlinks_intersection(
+        self, targets: List[str], exclude_targets: Optional[List[str]] = None,
+        limit: Optional[int] = None, offset: Optional[int] = None,
+        filters: Optional[list] = None, order_by: Optional[List[str]] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """POST /backlinks/domain_intersection/live — referring domains that link
+        to EVERY target (up to 20) and to none of `exclude_targets` (up to 10):
+        e.g. competitors as targets and your site excluded = link prospects."""
+        return self._live(f"{_BL}/domain_intersection/live", {
+            "targets": {str(i): t for i, t in enumerate(targets, 1)},
+            "exclude_targets": exclude_targets, "limit": limit, "offset": offset,
+            "filters": filters, "order_by": order_by, **(options or {})})
+
+    def backlinks_history(self, target: str, date_from: Optional[str] = None,
+                          date_to: Optional[str] = None) -> Dict[str, Any]:
+        """POST /backlinks/history/live — the domain's backlink profile month by
+        month (from 2019-01-01): backlinks, referring domains, rank, new and lost."""
+        return self._live(f"{_BL}/history/live", {"target": target, "date_from": date_from,
+                                                 "date_to": date_to})
+
+    def backlinks_new_lost(self, target: str, date_from: Optional[str] = None,
+                           date_to: Optional[str] = None, group_range: Optional[str] = None,
+                           options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """POST /backlinks/timeseries_new_lost_summary/live — new and lost backlinks
+        and referring domains per `group_range` (`day`|`week`|`month`|`year`)."""
+        return self._live(f"{_BL}/timeseries_new_lost_summary/live", {
+            "target": target, "date_from": date_from, "date_to": date_to,
+            "group_range": group_range, **(options or {})})
+
+    def backlinks_domain_pages(
+        self, target: str, limit: Optional[int] = None, offset: Optional[int] = None,
+        filters: Optional[list] = None, order_by: Optional[List[str]] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """POST /backlinks/domain_pages/live — the target's pages with their own
+        backlink and referring-domain counts (its most linked pages)."""
+        return self._live(f"{_BL}/domain_pages/live", {
+            "target": target, "limit": limit, "offset": offset, "filters": filters,
+            "order_by": order_by, **(options or {})})
