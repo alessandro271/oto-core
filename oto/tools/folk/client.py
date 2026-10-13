@@ -19,6 +19,13 @@ from ..common import FieldFilter, raise_for_upstream
 RELATION_FIELDS = frozenset({"groups", "companies"})
 RELATION_OPS = frozenset({"in", "not_in"})
 
+# `empty`/`not_empty` are predicates without an operand: Folk wants them with an
+# EMPTY value (`filter[emails][empty]=`), on people and companies as on tasks.
+# Whatever the caller passes (True, None, "yes"…), we normalize — passed through,
+# `{"emails": {"empty": True}}` went out as `filter[emails][empty]=True` and Folk
+# answered 422 `Invalid literal value, expected ""` (seen live on 2026-10-12).
+_VALUELESS_OPS = frozenset({"empty", "not_empty"})
+
 # Valid values of `subscribedEvents[].eventType` for webhooks (doc
 # developer.folk.app/api-reference/webhooks/create-a-webhook, 2026-08-04).
 # `object.*` covers deals AND any other custom object_type (no per-object_type
@@ -44,7 +51,9 @@ def filter_params(filters: Dict[str, Any]) -> Dict[str, Any]:
       default: contains);
     - value `{operator: value}` → the requested operator, as is
       (`eq`, `not_eq`, `not_like`, `empty`, `not_empty`, `gt`, `in`, `not_in`)
-      — a caller who wants strict equality no longer has to work around the client.
+      — a caller who wants strict equality no longer has to work around the client;
+    - `empty` / `not_empty` take no operand: whatever value comes with them, the
+      parameter goes out EMPTY (`_VALUELESS_OPS`).
 
     On a relation, the value of `in`/`not_in` is the BARE id (or a list of ids):
     the parameter's `[id]` is added HERE. An object value (`{"in": {"id": [...]}}`)
@@ -65,7 +74,7 @@ def filter_params(filters: Dict[str, Any]) -> Dict[str, Any]:
                             f"added by the connector), not {{{op!r}: {v!r}}}.")
                     params[f"filter[{key}][{op}][id]"] = v
                 else:
-                    params[f"filter[{key}][{op}]"] = v
+                    params[f"filter[{key}][{op}]"] = "" if op in _VALUELESS_OPS else v
         elif key in RELATION_FIELDS:
             params[f"filter[{key}][in][id]"] = val
         else:
@@ -102,11 +111,10 @@ TASK_FILTER_OPS: Dict[str, frozenset] = {
 # the operator rather than inventing one.
 TASK_FILTER_DEFAULT_OP = {"dueAt": "eq", "assigneeUserId": "in", "entity": "in"}
 
-# `empty`/`not_empty` are predicates without an operand: Folk wants them with an
-# EMPTY value (`filter[completedAt][empty]=`). Whatever the caller passes (True,
-# None, "yes"…), we normalize — otherwise `filter[completedAt][empty]=True` tests
+# `empty`/`not_empty` go out with an EMPTY value (`filter[completedAt][empty]=`),
+# here as in `filter_params` — otherwise `filter[completedAt][empty]=True` tests
 # an equality that makes no sense.
-_TASK_VALUELESS_OPS = frozenset({"empty", "not_empty"})
+_TASK_VALUELESS_OPS = _VALUELESS_OPS
 
 
 def task_filter_params(filters: Dict[str, Any]) -> Dict[str, Any]:

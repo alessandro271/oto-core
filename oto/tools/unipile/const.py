@@ -77,12 +77,44 @@ def cursor_with_limit(cursor: str, limit: int) -> str:
     return cursor
 
 
+# Sections of a member profile (v2 `with_sections`, bare names — the `linkedin_`
+# prefix is added by `_sections_param`). CLOSED set, each name verified live on
+# 2026-10-13: an unknown one goes out as `400 querystring/with_sections/N :
+# Expected kind 'StringEnum'`, which names neither the offender nor what exists.
+PROFILE_SECTIONS = (
+    "experience", "education", "languages", "skills", "certifications",
+    "volunteer_experience", "projects", "recommendations", "interests",
+    "recruiting_activity",
+)
+# v1 names (`linkedin_sections`) still found in prompts and procedures → the v2
+# section that carries the same data.
+_SECTION_ALIASES = {
+    "volunteering_experience": "volunteer_experience",
+    "recommendations_received": "recommendations",
+    "recommendations_given": "recommendations",
+}
+# v1 sections that v2 no longer has as sections because the base profile always
+# carries them: the "About" text comes back as `bio`, whatever is asked for.
+# Asking for one is therefore a no-op, not an error.
+_SECTIONS_ALWAYS_SERVED = frozenset({"about"})
+_PREVIEW = "_preview"
+
+
 def _sections_param(sections: str) -> Optional[list[str]]:
     """Map the `sections` value to the v2 `with_sections` param.
 
     Input: `"*"` (everything) or a comma-separated list of bare names
-    (`experience`, `education`…). v2: `with_sections=linkedin_<name>` (and
-    `linkedin_*` = everything). `"*"`/empty → None (server default = everything)."""
+    (`experience`, `education`…), each optionally suffixed `_preview` (first
+    visible entries only, `*_preview` = every section that way). v2:
+    `with_sections=linkedin_<name>` (and `linkedin_*` = everything).
+    `"*"`/empty → None (server default = everything).
+
+    A name outside `PROFILE_SECTIONS` is REFUSED here, naming what exists, rather
+    than sent: upstream answers it with an opaque 400 (see above). v1 names are
+    translated (`_SECTION_ALIASES`) and `about` is dropped — always served, as
+    `bio`."""
+    from .errors import UnipileError
+
     s = (sections or "").strip()
     if not s or s in ("*", "linkedin_*"):
         return None
@@ -91,7 +123,21 @@ def _sections_param(sections: str) -> Optional[list[str]]:
         p = part.strip()
         if not p:
             continue
-        out.append(p if p.startswith("linkedin_") else f"linkedin_{p}")
+        name = p[len("linkedin_"):] if p.startswith("linkedin_") else p
+        preview = name.endswith(_PREVIEW)
+        base = name[:-len(_PREVIEW)] if preview else name
+        if base in _SECTIONS_ALWAYS_SERVED:
+            continue
+        base = _SECTION_ALIASES.get(base, base)
+        if base != "*" and base not in PROFILE_SECTIONS:
+            raise UnipileError(
+                f"sections: {p!r} is not a profile section. Sections: "
+                f"{', '.join(PROFILE_SECTIONS)} — each one also as `<name>_preview` "
+                f"(first entries only), `*` for all of them. The About text needs "
+                f"no section: it is always returned, as `bio`.")
+        v2 = f"linkedin_{base}{_PREVIEW if preview else ''}"
+        if v2 not in out:
+            out.append(v2)
     return out or None
 
 

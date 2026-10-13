@@ -167,8 +167,22 @@ def test_text_field_keeps_the_historical_like():
 def test_explicit_operator_is_honoured():
     assert folk_client.filter_params({"fullName": {"eq": "Dupont"}}) == {
         "filter[fullName][eq]": "Dupont"}
-    assert folk_client.filter_params({"emails": {"not_empty": "true"}}) == {
-        "filter[emails][not_empty]": "true"}
+
+
+def test_empty_and_not_empty_go_out_without_a_value():
+    """`empty`/`not_empty` n'ont pas d'opérande : Folk attend la clé avec une valeur
+    VIDE et refuse tout le reste (422 `Invalid literal value, expected ""`, vu le
+    2026-10-12 sur `{"emails": {"empty": True}}`). Quoi que passe l'appelant, le
+    paramètre part vide — comme `task_filter_params` le fait déjà."""
+    for valeur in (True, "true", None, "yes", 1, ""):
+        assert folk_client.filter_params({"emails": {"empty": valeur}}) == {
+            "filter[emails][empty]": ""}
+        assert folk_client.filter_params({"emails": {"not_empty": valeur}}) == {
+            "filter[emails][not_empty]": ""}
+    assert _wire_query({"emails": {"empty": True}}) == "filter[emails][empty]="
+    # les autres opérateurs gardent leur valeur
+    assert folk_client.filter_params({"createdAt": {"gt": "2026-10-05"}}) == {
+        "filter[createdAt][gt]": "2026-10-05"}
 
 
 def test_explicit_relation_operator_still_nests_the_id():

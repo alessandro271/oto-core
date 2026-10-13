@@ -345,6 +345,39 @@ def test_get_profile_with_sections_mapping():
     assert "with_sections" not in (rec[0][2] or {})
 
 
+def test_sections_ferme_la_liste_et_nomme_ce_qui_existe():
+    """Une section inconnue partait telle quelle et revenait en `400
+    querystring/with_sections/N : Expected kind 'StringEnum'` — qui ne nomme ni la
+    fautive ni ce qui existe (vu le 2026-10-12 sur `experience,about`). Le client
+    refuse AVANT l'appel, en nommant les sections ; les noms v1 sont traduits, et
+    `about` (toujours servi, dans `bio`) se retire sans erreur."""
+    from oto.tools.unipile.const import PROFILE_SECTIONS, _sections_param
+
+    # les dix sections v2, nues ou déjà préfixées, et leur forme `_preview`
+    assert _sections_param(",".join(PROFILE_SECTIONS)) == [
+        f"linkedin_{s}" for s in PROFILE_SECTIONS]
+    assert _sections_param("linkedin_skills, experience_preview,*_preview") == [
+        "linkedin_skills", "linkedin_experience_preview", "linkedin_*_preview"]
+    # `about` : rien à demander, le profil de base le porte — le reste part
+    assert _sections_param("experience,about") == ["linkedin_experience"]
+    assert _sections_param("about") is None
+    # noms v1 → section v2, sans doublon
+    assert _sections_param(
+        "volunteering_experience,recommendations_received,recommendations_given"
+    ) == ["linkedin_volunteer_experience", "linkedin_recommendations"]
+
+    rec = []
+    c = _client(canned={"object": "UserProfile", "public_identifier": "x", "id": "x"},
+                recorder=rec)
+    with pytest.raises(UnipileError) as exc:
+        c.get_profile("x", sections="experience,headline")
+    assert exc.value.status_code is None          # refus d'entrée, pas un 4xx amont
+    assert "'headline'" in str(exc.value)
+    for nom in PROFILE_SECTIONS:
+        assert nom in str(exc.value)
+    assert rec == []                              # rien n'est parti
+
+
 def test_get_own_profile_skips_guard():
     rec = []
     c = _client(canned={"object": "UserProfile", "public_identifier": "me-real"},
