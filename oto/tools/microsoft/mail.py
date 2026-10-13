@@ -22,7 +22,14 @@ a draft first.
   `isInline: true`; the HTML body points at it with `<img src="cid:<id>">`.
   The id is written without the angle brackets of the MIME `Content-ID`
   header.
-- **`move` returns the message with a NEW id**: the old one no longer exists.
+- **Every request asks for IMMUTABLE ids** (`Prefer: IdType="ImmutableId"`,
+  set once in `MailClient._request`, alongside a call's own preference): an
+  id given back survives a move to another folder — `move` returns the SAME
+  id — and the move of a sent draft to Sent Items, so the sent copy is read
+  back by the draft's id (`sent_message`). It changes only if the message
+  goes to an archive mailbox, or is exported and imported again.
+- **Sending is asynchronous** (202): the copy in Sent Items appears once the
+  message has actually left, which can take a moment.
 - Folder arguments accept a folder id or a well-known name (`inbox`,
   `archive`, `deleteditems`, `drafts`, `sentitems`, `junkemail`).
 """
@@ -31,8 +38,10 @@ from __future__ import annotations
 import base64
 import html
 import re
+import time
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
+from ..common import UpstreamHTTPError
 from ..common.credentials import require
 from ._transport import GraphBase, segment
 
@@ -45,6 +54,11 @@ _LIST_FIELDS = ("id,subject,from,toRecipients,ccRecipients,receivedDateTime,sent
                 "parentFolderId,webLink")
 _ATTACHMENT_FIELDS = "id,name,contentType,size,isInline,lastModifiedDateTime"
 _BODY_TAG = re.compile(r"<body[^>]*>", re.IGNORECASE)
+#: Every request of the mailbox asks for immutable ids (see the module doc).
+_IMMUTABLE_IDS = 'IdType="ImmutableId"'
+_SENT_FIELDS = "id,webLink,sentDateTime"
+#: Waits before each read of a just-sent message — about 10 s in all.
+_SENT_POLL_DELAYS = (0.5, 1.0, 1.5, 2.0, 2.5, 2.5)
 
 
 def _recipients(addresses: Iterable[str], name: str) -> List[Dict[str, Any]]:
@@ -112,6 +126,13 @@ def _above_quote(body_html: str, draft_body: Mapping[str, Any]) -> str:
 
 class MailClient(GraphBase):
     """The signed-in person's Outlook mailbox."""
+
+    def _request(self, method: str, path_or_url: str, **kwargs: Any) -> Any:
+        """Every request asks for immutable ids, alongside the call's own `Prefer`."""
+        headers = dict(kwargs.pop("headers", None) or {})
+        headers["Prefer"] = ", ".join(
+            p for p in (_IMMUTABLE_IDS, headers.get("Prefer")) if p)
+        return super()._request(method, path_or_url, headers=headers, **kwargs)
 
     @staticmethod
     def _message(message_id: str) -> str:
@@ -185,14 +206,8 @@ class MailClient(GraphBase):
 
         Args:
             to / cc / bcc: email addresses.
-            attachments: `{"name", "content_type", "content_bytes"}` each, the
-                content as raw bytes, ≤ 3 MB each (refused beyond, before anything
-                is written). Each one is added to the draft by its own request,
-                so that their sum is not bound by Graph's request size. An entry
-                with a `content_id` is an INLINE attachment (`isInline`), shown
-                where the body says `<img src="cid:<content_id>">`; the id is
-                non-empty, without angle brackets or whitespace, and unique within
-                the message.
+            attachments: as `add_attachments` takes them — all checked before
+                anything is written.
 
         Returns the draft as created (its `id` is the one `send_draft` takes, its
         `webLink` opens it in Outlook on the web).
@@ -205,32 +220,78 @@ class MailClient(GraphBase):
             "ccRecipients": _recipients(cc, "cc"),
             "bccRecipients": _recipients(bcc, "bcc"),
         })
-        for file in files:
-            self._json("POST", f"{self._message(draft['id'])}/attachments", json=file)
+        self._post_attachments(draft["id"], files)
         return draft
 
     def create_reply_draft(self, message_id: str, *, body_html: str,
-                           reply_all: bool = False) -> Dict[str, Any]:
+                           reply_all: bool = False,
+                           attachments: Iterable[Mapping[str, Any]] = ()) -> Dict[str, Any]:
         """POST /me/messages/{id}/createReply (or createReplyAll), then PATCH of
-        the draft's body — a reply draft, not sent, recipients and subject set by
-        Graph, `body_html` placed above the quoted message.
+        the draft's body — a reply draft, not sent, recipients and subject set
+        by Graph, `body_html` placed above the quoted message; `attachments` as
+        `add_attachments` takes them, all checked before anything is written.
 
         Returns the updated draft."""
+        files = _attachments(attachments)
         action = "createReplyAll" if reply_all else "createReply"
         draft = self._json("POST", f"{self._message(message_id)}/{action}")
-        return self._json("PATCH", self._message(draft["id"]), json={
+        updated = self._json("PATCH", self._message(draft["id"]), json={
             "body": {"contentType": "HTML",
                      "content": _above_quote(body_html or "", draft.get("body") or {})}})
+        self._post_attachments(draft["id"], files)
+        return updated
+
+    def add_attachments(self, message_id: str,
+                        attachments: Iterable[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+        """POST /me/messages/{id}/attachments, once per file — attachments added to
+        an existing draft.
+
+        Args:
+            attachments: `{"name", "content_type", "content_bytes"}` each, the
+                content as raw bytes, ≤ 3 MB each. Each one is added by its own
+                request, so that their sum is not bound by Graph's request size.
+                An entry with a `content_id` is an INLINE attachment (`isInline`),
+                shown where the body says `<img src="cid:<content_id>">`; the id
+                is non-empty, without angle brackets or whitespace, and unique
+                among the attachments given. All are checked before anything is
+                written.
+
+        Returns the attachments as created."""
+        files = _attachments(attachments)
+        return self._post_attachments(message_id, files)
+
+    def _post_attachments(self, message_id: str,
+                          files: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return [self._json("POST", f"{self._message(message_id)}/attachments", json=file)
+                for file in files]
 
     def send_draft(self, message_id: str) -> str:
         """POST /me/messages/{id}/send — sends a draft (it moves to Sent Items).
-        Returns the id passed in."""
+        Graph answers 202: the message is accepted, not yet delivered. Returns the
+        id passed in, which is also the id of its copy in Sent Items (`sent_message`)."""
         self._json("POST", f"{self._message(message_id)}/send")
         return message_id
 
+    def sent_message(self, message_id: str) -> Optional[Dict[str, Any]]:
+        """GET /me/messages/{id} — the copy in Sent Items of a draft
+        just sent, `{id, webLink, sentDateTime}`. That copy appears only once the
+        message has left: read a few times over about 10 s while Graph answers
+        404, then `None` (not visible yet — the send itself is not in question).
+        Any other error is raised."""
+        for delay in _SENT_POLL_DELAYS:
+            time.sleep(delay)
+            try:
+                return self._json("GET", self._message(message_id),
+                                  params={"$select": _SENT_FIELDS})
+            except UpstreamHTTPError as e:
+                if e.status_code != 404:
+                    raise
+        return None
+
     def move(self, message_id: str, destination: str) -> Dict[str, Any]:
         """POST /me/messages/{id}/move — to a folder id or a well-known name
-        (`archive`, `deleteditems`, `inbox`…). ⚠️ Returns the message with its NEW id."""
+        (`archive`, `deleteditems`, `inbox`…). Returns the message, its id unchanged
+        (immutable ids)."""
         return self._json("POST", f"{self._message(message_id)}/move",
                           json={"destinationId": require(destination, "destination")})
 

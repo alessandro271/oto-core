@@ -1,6 +1,8 @@
 """MailClient — verrouille le contrat HTTP de la boîte Outlook : recherche KQL contre
 liste triée, corps demandé par `Prefer`, brouillons (nouveau, réponse au-dessus de la
-citation), envoi séparé, pièces jointes bornées à 3 Mo, erreurs amont typées."""
+citation), envoi séparé, pièces jointes bornées à 3 Mo, erreurs amont typées ; ids
+immuables demandés sur TOUS les appels, relecture bornée de la copie envoyée, pièces
+jointes (dont images en ligne) sur un brouillon existant et sur une réponse."""
 import base64
 
 import pytest
@@ -51,8 +53,10 @@ def test_corps_demande_en_texte_ou_html(calls, client):
     client.get_message("AAMk=")
     client.get_message("AAMk=", body="html")
     assert calls[0]["url"] == f"{G}/me/messages/AAMk%3D"
-    assert calls[0]["headers"]["Prefer"] == 'outlook.body-content-type="text"'
-    assert calls[1]["headers"]["Prefer"] == 'outlook.body-content-type="html"'
+    assert calls[0]["headers"]["Prefer"] == (
+        'IdType="ImmutableId", outlook.body-content-type="text"')
+    assert calls[1]["headers"]["Prefer"] == (
+        'IdType="ImmutableId", outlook.body-content-type="html"')
     with pytest.raises(ValueError, match="body"):
         client.get_message("m", body="rtf")
 
@@ -156,10 +160,10 @@ def test_reponse_a_un_message_texte_echappe_la_citation(calls, client):
 
 
 def test_envoi_deplacement_suppression(calls, client):
-    calls.responses.extend([_Resp(status_code=202), _Resp({"id": "m1-new"}),
+    calls.responses.extend([_Resp(status_code=202), _Resp({"id": "m1"}),
                             _Resp(status_code=204)])
     assert client.send_draft("d1") == "d1"
-    assert client.move("m1", "archive") == {"id": "m1-new"}
+    assert client.move("m1", "archive") == {"id": "m1"}  # immutable: same id
     assert client.delete("m1") == "m1"
     assert [(c["method"], c["url"]) for c in calls] == [
         ("POST", f"{G}/me/messages/d1/send"),
@@ -179,3 +183,113 @@ def test_refus_amont_type(calls, client):
     with pytest.raises(UpstreamHTTPError) as exc:
         client.send_draft("d1")
     assert exc.value.status_code == 403 and exc.value.service == "microsoft"
+
+
+IMMUABLE = 'IdType="ImmutableId"'
+
+
+def test_ids_immuables_sur_tous_les_appels(calls, client):
+    calls.responses.extend([
+        _Resp({"value": [{"id": "m1"}], "@odata.nextLink": f"{G}/me/messages?$skip=1"}),
+        _Resp({"value": [{"id": "m2"}]}),
+        _Resp({"value": []}), _Resp({"value": []}), _Resp({"id": "a1"}),
+        _Resp({"id": "m1"}), _Resp(status_code=204),
+        _Resp({"id": "d1"}), _Resp({"id": "a1"}), _Resp(status_code=202)])
+    client.search_messages(top=2)
+    client.list_folders()
+    client.list_attachments("m1")
+    client.get_attachment("m1", "a1")
+    client.move("m1", "archive")
+    client.delete("m1")
+    client.create_draft(to=["a@b.c"], subject="s", body_html="", attachments=[
+        {"name": "a.pdf", "content_bytes": b"%PDF"}])
+    client.send_draft("d1")
+    assert len(calls) == 10, "la page suivante aussi"
+    assert [c["headers"].get("Prefer") for c in calls] == [IMMUABLE] * 10
+
+
+def test_copie_envoyee_relue_apres_quelques_404(calls, client, monkeypatch):
+    from oto.tools.microsoft import mail
+
+    attentes = []
+    monkeypatch.setattr(mail.time, "sleep", attentes.append)
+    vu = {"id": "d1", "webLink": "https://outlook.office.com/sent/d1",
+          "sentDateTime": "2026-10-13T10:00:00Z"}
+    calls.responses.extend([_Resp({"error": {"code": "ErrorItemNotFound"}}, status_code=404),
+                            _Resp({"error": {"code": "ErrorItemNotFound"}}, status_code=404),
+                            _Resp(vu)])
+    assert client.sent_message("d1") == vu
+    assert attentes == list(mail._SENT_POLL_DELAYS[:3])
+    for c in calls:
+        assert (c["method"], c["url"]) == ("GET", f"{G}/me/messages/d1")
+        assert c["params"] == {"$select": "id,webLink,sentDateTime"}
+        assert c["headers"]["Prefer"] == IMMUABLE
+
+
+def test_copie_envoyee_pas_encore_visible_rend_none_en_dix_secondes(calls, client,
+                                                                    monkeypatch):
+    from oto.tools.microsoft import mail
+
+    attentes = []
+    monkeypatch.setattr(mail.time, "sleep", attentes.append)
+    calls.responses.extend([_Resp({"error": {}}, status_code=404)
+                            for _ in mail._SENT_POLL_DELAYS])
+    assert client.sent_message("d1") is None
+    assert len(calls) == len(mail._SENT_POLL_DELAYS)
+    assert 8 <= sum(attentes) <= 10
+
+
+def test_copie_envoyee_autre_erreur_levee(calls, client, monkeypatch):
+    from oto.tools.microsoft import mail
+
+    monkeypatch.setattr(mail.time, "sleep", lambda d: None)
+    calls.responses.append(_Resp({"error": {"code": "ErrorAccessDenied"}}, status_code=403))
+    with pytest.raises(UpstreamHTTPError) as exc:
+        client.sent_message("d1")
+    assert exc.value.status_code == 403 and len(calls) == 1
+
+
+def test_pieces_ajoutees_a_un_brouillon_existant(calls, client):
+    calls.responses.extend([_Resp({"id": "a1"}), _Resp({"id": "a2"})])
+    assert client.add_attachments("d1", [
+        {"name": "logo.png", "content_type": "image/png", "content_bytes": b"P",
+         "content_id": "logo"},
+        {"name": "devis.pdf", "content_bytes": b"%PDF"}]) == [{"id": "a1"}, {"id": "a2"}]
+    logo, devis = calls
+    assert (logo["method"], logo["url"]) == ("POST", f"{G}/me/messages/d1/attachments")
+    assert logo["json"]["isInline"] is True and logo["json"]["contentId"] == "logo"
+    assert devis["json"]["contentType"] == "application/octet-stream"
+    assert "isInline" not in devis["json"]
+    calls.clear()
+    with pytest.raises(ValueError, match="two attachments"):
+        client.add_attachments("d1", [
+            {"name": "a.png", "content_bytes": b"x", "content_id": "logo"},
+            {"name": "b.png", "content_bytes": b"y", "content_id": "logo"}])
+    with pytest.raises(ValueError, match="at most"):
+        client.add_attachments("d1", [
+            {"name": "ok.pdf", "content_bytes": b"x"},
+            {"name": "gros.zip", "content_bytes": b"0" * (MAX_INLINE_ATTACHMENT + 1)}])
+    assert calls == []
+
+
+def test_reponse_avec_image_en_ligne(calls, client):
+    calls.responses.extend([
+        _Resp({"id": "r1", "body": {"contentType": "html", "content": "<body><hr></body>"}}),
+        _Resp({"id": "r1", "webLink": "https://outlook.office.com/r1"}),
+        _Resp({"id": "a1"})])
+    out = client.create_reply_draft("m1", body_html='<img src="cid:logo">', attachments=[
+        {"name": "logo.png", "content_type": "image/png", "content_bytes": b"P",
+         "content_id": "logo"}])
+    assert out["webLink"] == "https://outlook.office.com/r1"
+    create, patch, logo = calls
+    assert [c["headers"].get("Prefer") for c in calls] == [IMMUABLE] * 3
+    assert patch["json"]["body"]["content"] == '<body><img src="cid:logo"><hr></body>'
+    assert (logo["method"], logo["url"]) == ("POST", f"{G}/me/messages/r1/attachments")
+    assert logo["json"]["isInline"] is True and logo["json"]["contentId"] == "logo"
+
+
+def test_reponse_avec_content_id_invalide_rien_n_est_ecrit(calls, client):
+    with pytest.raises(ValueError, match="content_id"):
+        client.create_reply_draft("m1", body_html="", attachments=[
+            {"name": "logo.png", "content_bytes": b"P", "content_id": "<logo>"}])
+    assert calls == []
