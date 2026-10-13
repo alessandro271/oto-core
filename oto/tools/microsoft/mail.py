@@ -18,6 +18,10 @@ a draft first.
   isRead eq false` for that reason.
 - **An attachment travels inline only up to 3 MB**: larger files need an
   upload session, not covered here — `create_draft` refuses them.
+- **An image shown in the body is an attachment with a `contentId`** and
+  `isInline: true`; the HTML body points at it with `<img src="cid:<id>">`.
+  The id is written without the angle brackets of the MIME `Content-ID`
+  header.
 - **`move` returns the message with a NEW id**: the old one no longer exists.
 - Folder arguments accept a folder id or a well-known name (`inbox`,
   `archive`, `deleteditems`, `drafts`, `sentitems`, `junkemail`).
@@ -49,8 +53,20 @@ def _recipients(addresses: Iterable[str], name: str) -> List[Dict[str, Any]]:
     return [{"emailAddress": {"address": require(a, name)}} for a in addresses]
 
 
+def _content_id(name: str, value: Any) -> str:
+    """The `content_id` of an inline attachment: what `cid:` points at in the body."""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"attachment {name!r}: content_id must be a non-empty string")
+    if any(c in value for c in "<> \t\r\n"):
+        raise ValueError(
+            f"attachment {name!r}: content_id {value!r} must be written without angle "
+            "brackets or whitespace — the body refers to it as `cid:<content_id>`")
+    return value
+
+
 def _attachment(spec: Mapping[str, Any]) -> Dict[str, Any]:
-    """`{name, content_type, content_bytes}` (raw bytes) → a Graph fileAttachment."""
+    """`{name, content_type, content_bytes[, content_id]}` (raw bytes) → a Graph
+    fileAttachment; with `content_id`, an inline one (`<img src="cid:…">`)."""
     name = require(spec.get("name"), "attachment name")
     content = spec.get("content_bytes")
     if not isinstance(content, (bytes, bytearray)):
@@ -59,9 +75,28 @@ def _attachment(spec: Mapping[str, Any]) -> Dict[str, Any]:
         raise ValueError(
             f"attachment {name!r} is {len(content)} bytes: Graph accepts at most "
             f"{MAX_INLINE_ATTACHMENT} bytes per attachment sent inline")
-    return {"@odata.type": "#microsoft.graph.fileAttachment", "name": name,
+    file = {"@odata.type": "#microsoft.graph.fileAttachment", "name": name,
             "contentType": spec.get("content_type") or "application/octet-stream",
             "contentBytes": base64.b64encode(bytes(content)).decode("ascii")}
+    if spec.get("content_id") is not None:
+        file.update(isInline=True, contentId=_content_id(name, spec["content_id"]))
+    return file
+
+
+def _attachments(specs: Iterable[Mapping[str, Any]]) -> List[Dict[str, Any]]:
+    """Every attachment checked BEFORE anything is written, inline ids unique."""
+    files = [_attachment(a) for a in specs]
+    seen: Dict[str, str] = {}
+    for file in files:
+        cid = file.get("contentId")
+        if cid is None:
+            continue
+        if cid in seen:
+            raise ValueError(f"content_id {cid!r} is given to two attachments "
+                             f"({seen[cid]!r} and {file['name']!r}): each `cid:` must "
+                             "designate one file")
+        seen[cid] = file["name"]
+    return files
 
 
 def _above_quote(body_html: str, draft_body: Mapping[str, Any]) -> str:
@@ -153,11 +188,16 @@ class MailClient(GraphBase):
             attachments: `{"name", "content_type", "content_bytes"}` each, the
                 content as raw bytes, ≤ 3 MB each (refused beyond, before anything
                 is written). Each one is added to the draft by its own request,
-                so that their sum is not bound by Graph's request size.
+                so that their sum is not bound by Graph's request size. An entry
+                with a `content_id` is an INLINE attachment (`isInline`), shown
+                where the body says `<img src="cid:<content_id>">`; the id is
+                non-empty, without angle brackets or whitespace, and unique within
+                the message.
 
-        Returns the draft as created (its `id` is the one `send_draft` takes).
+        Returns the draft as created (its `id` is the one `send_draft` takes, its
+        `webLink` opens it in Outlook on the web).
         """
-        files = [_attachment(a) for a in attachments]
+        files = _attachments(attachments)
         draft = self._json("POST", "/me/messages", json={
             "subject": subject or "",
             "body": {"contentType": "HTML", "content": body_html or ""},

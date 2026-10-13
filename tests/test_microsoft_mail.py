@@ -94,6 +94,39 @@ def test_piece_jointe_de_plus_de_3_mo_refusee_avant_toute_ecriture(calls, client
     assert calls == []
 
 
+def test_image_en_ligne_par_content_id(calls, client):
+    calls.responses.append(_Resp({"id": "d1", "webLink": "https://outlook.office.com/d1"}))
+    draft = client.create_draft(
+        to=["jane@contoso.com"], subject="Lettre", body_html='<img src="cid:logo">',
+        attachments=[{"name": "logo.png", "content_type": "image/png",
+                      "content_bytes": b"\x89PNG", "content_id": "logo"},
+                     {"name": "devis.pdf", "content_type": "application/pdf",
+                      "content_bytes": b"%PDF"}])
+    assert draft["webLink"] == "https://outlook.office.com/d1"
+    _, image, pdf = calls
+    assert image["json"] == {"@odata.type": "#microsoft.graph.fileAttachment",
+                             "name": "logo.png", "contentType": "image/png",
+                             "contentBytes": base64.b64encode(b"\x89PNG").decode(),
+                             "isInline": True, "contentId": "logo"}
+    assert "isInline" not in pdf["json"] and "contentId" not in pdf["json"]
+
+
+@pytest.mark.parametrize("content_id", ["", "  ", "<logo>", "logo 1", 7])
+def test_content_id_invalide_refuse_avant_toute_ecriture(calls, client, content_id):
+    with pytest.raises(ValueError, match="content_id"):
+        client.create_draft(to=["a@b.c"], subject="s", body_html="", attachments=[
+            {"name": "logo.png", "content_bytes": b"x", "content_id": content_id}])
+    assert calls == []
+
+
+def test_content_id_en_double_refuse_avant_toute_ecriture(calls, client):
+    with pytest.raises(ValueError, match="two attachments"):
+        client.create_draft(to=["a@b.c"], subject="s", body_html="", attachments=[
+            {"name": "a.png", "content_bytes": b"x", "content_id": "logo"},
+            {"name": "b.png", "content_bytes": b"y", "content_id": "logo"}])
+    assert calls == []
+
+
 def test_destinataires_en_chaine_refuses(client):
     with pytest.raises(TypeError, match="list"):
         client.create_draft(to="jane@contoso.com", subject="s", body_html="")
