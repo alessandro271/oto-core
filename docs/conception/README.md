@@ -21,6 +21,7 @@ Les documents de conception de ce dépôt : pour chaque sujet, **comment** c'est
 |---|---|---|
 | [Format de description](format-de-description.md) | Comment décrit-on un connecteur partagé, et que doit contenir son fichier ? | validé avec Alexis le 29/09/2026 |
 | [La fabrique](fabrique.md) | Comment un fichier de description devient-il des définitions TypeScript que le paquet d'oto 2 adapte, puis un client Python ? | proposé |
+| [Niveaux d'accès](niveaux-d-acces.md) | Comment ouvrir un connecteur OAuth en lecture seule, ou à un sous-ensemble de ses droits ? | validé avec Alexis le 14/10/2026 |
 
 ## Anciens identifiants → document
 
