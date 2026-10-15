@@ -13,6 +13,7 @@ import * as notion from "./notion"
 import * as pennylane from "./pennylane"
 import * as pennylaneFirm from "./pennylane_firm"
 import * as sellsy from "./sellsy"
+import * as sivan from "./sivan"
 import * as typeform from "./typeform"
 import * as wttjAts from "./wttj_ats"
 import type { Connector } from "./types"
@@ -31,6 +32,7 @@ export { notion }
 export { pennylane }
 export { pennylaneFirm }
 export { sellsy }
+export { sivan }
 export { typeform }
 export { wttjAts }
 export type * from "./types"
@@ -51,6 +53,7 @@ export const connectors: readonly Connector[] = [
   pennylane.connector,
   pennylaneFirm.connector,
   sellsy.connector,
+  sivan.connector,
   typeform.connector,
   wttjAts.connector,
 ]
