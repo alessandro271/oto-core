@@ -81,6 +81,33 @@ describe("generated definitions", () => {
     },
   )
 
+  it.each(functions)("%s: act is resolved, never false when sensitive nor true when read", (_name, _connector, fn) => {
+    expect(typeof fn.act).toBe("boolean")
+    if (fn.class === "sensitive") expect(fn.act).toBe(true)
+    if (fn.class === "read") expect(fn.act).toBe(false)
+  })
+
+  it.each(connectors.map((c) => [c.name, c] as const))("%s: every credential field says who holds it", (_name, connector) => {
+    for (const field of connector.credential) expect(["account", "host"], field.name).toContain(field.holder)
+  })
+
+  // Compte rattaché : l'identité n'est citée que par l'adresse de base, après l'hôte, et aucune fonction ne la prend.
+  it.each(connectors.flatMap((c) => (c.accountIdentity ? [[c.name, c, c.accountIdentity] as const] : [])))(
+    "%s: the account identity is cited after the host only, and by no function",
+    (_name, connector, identity) => {
+      expect(identity.pattern).toMatch(/^\^.+\$$/)
+      const cited = `{${identity.name}}`
+      const urls = connector.baseUrl !== undefined ? [connector.baseUrl] : Object.values(connector.baseUrls?.values ?? {})
+      expect(urls.length).toBeGreaterThan(0)
+      for (const url of urls) expect(url).toMatch(new RegExp(`^(https://[^/{}]+|\\{[a-z][a-z0-9_]*\\})/.*\\{${identity.name}\\}`))
+      for (const fn of connector.functions) {
+        expect(Object.keys(fn.schema.properties as object), fn.name).not.toContain(identity.name)
+        expect(fn.request.path, fn.name).not.toContain(cited)
+        for (const names of [fn.request.query, fn.request.body, fn.request.headers]) expect(Object.keys(names)).not.toContain(identity.name)
+      }
+    },
+  )
+
   it.each(connectors.filter((c) => c.baseUrls).map((c) => [c.name, c] as const))("%s: base URLs give one address per choice", (_name, connector) => {
     const setting = connector.settings?.find((s) => s.name === connector.baseUrls?.setting)
     expect(setting?.type).toBe("choice")

@@ -5,6 +5,7 @@ export const getPrimaryCalendar = defineFunction({
   name: "google_calendar.get_primary_calendar",
   connector: "google_calendar",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
   description: "Get the primary calendar of the signed-in person: its id, which is their email address, its summary and its time zone.",
   schema: {"type": "object", "additionalProperties": false, "properties": {}},
@@ -27,6 +28,7 @@ export const listCalendars = defineFunction({
   name: "google_calendar.list_calendars",
   connector: "google_calendar",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
   description: "List the calendars in the signed-in person's calendar list: id, summary, whether it is primary, and their access role (owner, writer, reader, freeBusyReader).",
   schema: {
@@ -72,6 +74,7 @@ export const listEvents = defineFunction({
   name: "google_calendar.list_events",
   connector: "google_calendar",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
   description: "List the events of a calendar in start order, recurring events expanded into their occurrences, optionally between two instants and matching free text. calendar_id primary is the signed-in person's own calendar.",
   schema: {
@@ -142,6 +145,7 @@ export const getEvent = defineFunction({
   name: "google_calendar.get_event",
   connector: "google_calendar",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/calendar.readonly"],
   description: "Get one event by id: summary, description, location, start, end, guests and their responses, organizer, recurrence, conference link.",
   schema: {
@@ -178,6 +182,7 @@ export const createEvent = defineFunction({
   name: "google_calendar.create_event",
   connector: "google_calendar",
   class: "sensitive",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/calendar"],
   description: "Create an event. start and end are both a date (all-day event, end exclusive) or both a dateTime with offset or timeZone. Guests are invited by email; send_updates says who Google emails: all, externalOnly (guests outside the organization) or none.",
   schema: {
@@ -261,6 +266,7 @@ export const updateEvent = defineFunction({
   name: "google_calendar.update_event",
   connector: "google_calendar",
   class: "sensitive",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/calendar"],
   description: "Change an event: only the fields given change. attendees replaces the whole guest list: pass the full list, current guests included; an empty list removes every guest. send_updates says who Google emails about the change.",
   schema: {
@@ -353,6 +359,7 @@ export const deleteEvent = defineFunction({
   name: "google_calendar.delete_event",
   connector: "google_calendar",
   class: "sensitive",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/calendar"],
   description: "Delete an event. For the guests it is cancelled; send_updates says who Google emails about it.",
   schema: {

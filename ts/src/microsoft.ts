@@ -5,6 +5,7 @@ export const searchSites = defineFunction({
   name: "microsoft.search_sites",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["https://graph.microsoft.com/Sites.Read.All"],
   description: "Search the SharePoint sites whose name or description matches a query. Only the sites the signed-in person can open are returned.",
   schema: {
@@ -42,6 +43,7 @@ export const getSite = defineFunction({
   name: "microsoft.get_site",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["https://graph.microsoft.com/Sites.Read.All"],
   description: "Get one SharePoint site by its composite id ({hostname},{site-collection-id},{web-id}), as returned by search_sites.",
   schema: {
@@ -77,6 +79,7 @@ export const getSiteByPath = defineFunction({
   name: "microsoft.get_site_by_path",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["https://graph.microsoft.com/Sites.Read.All"],
   description: "Get one SharePoint site by the host name and server-relative path read in its URL: https://acme.sharepoint.com/sites/Marketing gives hostname acme.sharepoint.com and site_path sites/Marketing.",
   schema: {
@@ -117,6 +120,7 @@ export const listSiteDrives = defineFunction({
   name: "microsoft.list_site_drives",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["https://graph.microsoft.com/Sites.Read.All"],
   description: "List the document libraries of a SharePoint site. A library is a drive: its id is the drive_id of the item functions.",
   schema: {
@@ -158,6 +162,7 @@ export const getMe = defineFunction({
   name: "microsoft.get_me",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["User.Read"],
   description: "Get the signed-in person: id, displayName, mail and userPrincipalName. Every other function acts on their behalf and sees what they see.",
   schema: {"type": "object", "additionalProperties": false, "properties": {}},
@@ -180,6 +185,7 @@ export const getMyDrive = defineFunction({
   name: "microsoft.get_my_drive",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["https://graph.microsoft.com/Files.Read.All"],
   description: "Get the OneDrive of the signed-in person. Its id is the drive_id of the item functions.",
   schema: {"type": "object", "additionalProperties": false, "properties": {}},
@@ -202,6 +208,7 @@ export const getUserDrive = defineFunction({
   name: "microsoft.get_user_drive",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["https://graph.microsoft.com/Files.Read.All"],
   description: "Get the OneDrive of a colleague, by user id or userPrincipalName (usually the work email), if they shared it with the signed-in person. Its id is the drive_id of the item functions.",
   schema: {
@@ -237,6 +244,7 @@ export const getItem = defineFunction({
   name: "microsoft.get_item",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["https://graph.microsoft.com/Files.Read.All"],
   description: "Get the metadata of one file or folder of a drive by its item id.",
   schema: {
@@ -277,6 +285,7 @@ export const getItemByPath = defineFunction({
   name: "microsoft.get_item_by_path",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["https://graph.microsoft.com/Files.Read.All"],
   description: "Get the metadata of one file or folder of a drive by its path from the drive root, e.g. Contracts/2026/nda.docx.",
   schema: {
@@ -317,6 +326,7 @@ export const listRootChildren = defineFunction({
   name: "microsoft.list_root_children",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["https://graph.microsoft.com/Files.Read.All"],
   description: "List the files and folders at the root of a drive.",
   schema: {
@@ -358,6 +368,7 @@ export const listChildren = defineFunction({
   name: "microsoft.list_children",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["https://graph.microsoft.com/Files.Read.All"],
   description: "List the files and folders inside one folder of a drive, by the folder's item id.",
   schema: {
@@ -406,6 +417,7 @@ export const listChildrenByPath = defineFunction({
   name: "microsoft.list_children_by_path",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["https://graph.microsoft.com/Files.Read.All"],
   description: "List the files and folders inside one folder of a drive, by the folder's path from the drive root, e.g. Contracts/2026.",
   schema: {
@@ -454,6 +466,7 @@ export const searchItems = defineFunction({
   name: "microsoft.search_items",
   connector: "microsoft",
   class: "read",
+  act: false,
   scopes: ["https://graph.microsoft.com/Files.Read.All"],
   description: "Search the files of a whole drive by name, metadata and content. Results come from the SharePoint index, not a live scan: a file added seconds ago may not show yet. The query cannot contain an apostrophe.",
   schema: {

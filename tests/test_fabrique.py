@@ -336,7 +336,7 @@ def test_access_levels_pass_and_are_carried():
     module = connector_module(check(description, SELLSY))
     assert '"accessLevels": {' in module.source and '"read": {"scopes": ["Estimates.READ", "Settings.READ"]}' in module.source
     assert '"scopeImplies": {"Estimates.ALL": ["Estimates.READ"]}' in module.source
-    assert '  class: "read",\n  scopes: ["Estimates.READ", "Settings.READ"],\n  description: ' in module.source
+    assert '  class: "read",\n  act: false,\n  scopes: ["Estimates.READ", "Settings.READ"],\n  description: ' in module.source
     assert '"scopes":' not in module.source.split("auth: {")[1].split("accessLevels")[0]
 
 
@@ -474,3 +474,143 @@ def test_microsoft_levels_serve_every_function_at_read():
     read = auth["access_levels"]["read"]["scopes"]
     assert not any("ReadWrite" in scope for scope in read)
     assert all(served(f, read, auth["scope_implies"]) for f in description.data["functions"])
+
+
+# --- Règle 8 : compte de l'hôte et compte rattaché -----------------------------------
+
+LINKEDIN = CONNECTORS / "linkedin_unipile" / "connector.yaml"
+ACCOUNT_ID = "{account_id}"
+
+
+def test_hosted_account_passes_and_is_carried():
+    """Tous les champs du credential fournis par l'hôte : la description reste valide ; la sortie dit `holder` de chaque
+    champ et l'identité du compte."""
+    description = _load(LINKEDIN)
+    assert all(field["holder"] == "host" for field in description["connector"]["credential"])
+    source = connector_module(check(description, LINKEDIN)).source
+    assert 'credential: [{"name": "api_key", "label": "Unipile API key", "secret": true, "holder": "host"}],' in source
+    assert 'accountIdentity: {"name": "account_id", "label": "LinkedIn account", "pattern": "^[A-Za-z0-9_-]{1,64}$"},' in source
+    assert 'baseUrl: "https://api.unipile.com/v2/{account_id}",' in source
+    assert '"account_id"' not in source.split("export const connector")[0]
+
+
+def test_holder_defaults_to_account_in_the_output():
+    sellsy = connector_module(check(_load(SELLSY), SELLSY)).source
+    assert '"secret": true, "holder": "account"}' in sellsy
+    assert "accountIdentity" not in sellsy
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda d: d["connector"].update(base_url="https://api.example.net/v2/{account_id}/linkedin"),
+    lambda d: (d["connector"].update(settings=[{"name": "server", "label": "Server", "type": "url"}]),
+               d["connector"].update(base_url="{server}/v2/{account_id}")),
+    lambda d: (d["connector"].pop("base_url"),
+               d["connector"].update(settings=[{"name": "region", "label": "Region", "type": "choice", "choices": ["us", "eu"]}]),
+               d["connector"].update(base_urls={"setting": "region", "values": {
+                   "us": "https://us.example.net/v2/{account_id}", "eu": "https://eu.example.net/v2/{account_id}"}})),
+], ids=["in_the_path", "after_a_url_setting", "in_each_base_urls"])
+def test_account_identity_after_the_host_passes(mutate):
+    description = _load(LINKEDIN)
+    mutate(description)
+    check(description, LINKEDIN)
+
+
+def _get_profile(d):
+    return _fn(d, "get_profile")
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda d: d["connector"].update(base_url="https://api.unipile.com/v2"),
+     "base_url does not cite the account identity {account_id}"),
+    (lambda d: (d["connector"].pop("base_url"),
+                d["connector"].update(settings=[{"name": "region", "label": "Region", "type": "choice", "choices": ["us", "eu"]}]),
+                d["connector"].update(base_urls={"setting": "region", "values": {
+                    "us": "https://us.example.net/v2/{account_id}", "eu": "https://eu.example.net/v2"}})),
+     "base_urls.values.eu does not cite the account identity {account_id}"),
+    (lambda d: (_get_profile(d)["input"]["properties"].update(account_id={"type": "string"}),
+                _get_profile(d)["call"]["query"].update(account_id="account_id")),
+     "function get_profile: input argument 'account_id' bears the name of the account identity"),
+    (lambda d: _get_profile(d)["call"].update(path="/users/{identifier}/{account_id}"),
+     "function get_profile: the path cites the account identity {account_id}"),
+    (lambda d: _get_profile(d)["call"].update(query={"account_id": "with_sections"}),
+     "function get_profile: query parameter 'account_id' bears the name of the account identity"),
+    (lambda d: _fn(d, "send_message")["call"].update(body={"account_id": "text"}),
+     "function send_message: body parameter 'account_id' bears the name of the account identity"),
+    (lambda d: _get_profile(d)["call"].update(headers={"Account_Id": "with_sections"}),
+     "function get_profile: headers parameter 'account_id' bears the name of the account identity"),
+    (lambda d: _get_profile(d)["call"].update(constants={"query": {"account_id": "x"}}),
+     "function get_profile: constant query 'account_id' bears the name of the account identity"),
+    (lambda d: d["connector"].update(settings=[{"name": "account_id", "label": "Account", "type": "text", "pattern": "^[a-z]+$"}]),
+     "account_identity 'account_id' is also the name of a setting"),
+    (lambda d: d["connector"]["credential"].append({"name": "account_id", "label": "Account", "secret": False}),
+     "account_identity 'account_id' is also the name of a credential field"),
+    (lambda d: d["connector"].update(base_url="{account_id}/v2"),
+     "base_url cites the account identity {account_id} elsewhere than after the host"),
+    (lambda d: d["connector"].update(base_url="https://{account_id}.unipile.com/v2"),
+     "base_url cites the account identity {account_id} elsewhere than after the host"),
+    (lambda d: (d["connector"].pop("base_url"),
+                d["connector"].update(settings=[{"name": "region", "label": "Region", "type": "choice", "choices": ["us", "eu"]}]),
+                d["connector"].update(base_urls={"setting": "region", "values": {
+                    "us": "https://us.example.net/v2/{account_id}", "eu": "https://eu.example.net/{region}/{account_id}"}})),
+     "base_urls.values cites {region}, which is not the account identity"),
+    (lambda d: (d["connector"].update(auth={"kind": "oauth2_client_credentials", "token_url": "https://login.example/{account_id}/token",
+                                            "token_request": "form", "client_auth": "body", "client_id": "api_key",
+                                            "client_secret": "api_key"})),
+     "auth.token_url cites the account identity {account_id}, which only the base URL cites"),
+], ids=["not_cited", "not_cited_in_each_base_urls", "input_argument", "path_parameter", "query_parameter",
+        "body_parameter", "header_parameter", "constant", "setting_name", "credential_name", "at_the_head", "in_the_host",
+        "base_urls_cites_a_setting", "token_url"])
+def test_account_identity_rule_refuses(mutate, message):
+    description = _load(LINKEDIN)
+    mutate(description)
+    with pytest.raises(DescriptionError, match=re.escape(message)):
+        check(description, LINKEDIN)
+
+
+def test_base_urls_cite_nothing_without_an_account_identity():
+    description = _load(SELLSY)
+    description["connector"].pop("base_url")
+    description["connector"]["settings"] = [{"name": "region", "label": "Region", "type": "choice", "choices": ["us", "eu"]}]
+    description["connector"]["base_urls"] = {"setting": "region", "values": {
+        "us": "https://us.example.net/{account_id}", "eu": "https://eu.example.net"}}
+    with pytest.raises(DescriptionError, match=re.escape("base_urls.values cites {account_id}, which is not the account identity")):
+        check(description, SELLSY)
+
+
+# --- Règle 9 : `act`, ce qui engage ou détruit ---------------------------------------
+
+
+@pytest.mark.parametrize("klass, declared, resolved", [
+    ("read", None, False), ("write", None, True), ("sensitive", None, True),
+    ("read", False, False), ("write", False, False), ("write", True, True), ("sensitive", True, True),
+], ids=lambda v: str(v))
+def test_act_resolves_from_the_class(klass, declared, resolved):
+    function = _load(SELLSY)["functions"][1]
+    function["class"] = klass
+    if klass == "sensitive":
+        function["confirm"] = {"summary": "Do it to {id}."}
+    if declared is not None:
+        function["act"] = declared
+    assert f"  class: {klass!r},\n  act: {str(resolved).lower()},\n".replace("'", '"') in function_source("sellsy", function)
+
+
+@pytest.mark.parametrize("klass, declared, message", [
+    ("sensitive", False, "function get_estimate: a sensitive function cannot declare act: false"),
+    ("read", True, "function get_estimate: a read function cannot declare act: true"),
+], ids=["sensitive_not_act", "read_act"])
+def test_act_rule_refuses(klass, declared, message):
+    description = _load(SELLSY)
+    function = _get_estimate(description)
+    function["class"] = klass
+    function["act"] = declared
+    if klass == "sensitive":
+        function["confirm"] = {"summary": "Do it to {id}."}
+    with pytest.raises(DescriptionError, match=re.escape(message)):
+        check(description, SELLSY)
+
+
+def test_linkedin_sends_act_and_reads_do_not():
+    module = connector_module(check(_load(LINKEDIN), LINKEDIN)).source
+    for name in ("sendInvitation", "sendMessage"):
+        assert f'export const {name} = defineFunction({{\n  name: ' in module
+    assert module.count("  act: true,\n") == 2 and module.count("  act: false,\n") == 8

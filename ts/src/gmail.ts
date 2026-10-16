@@ -5,6 +5,7 @@ export const getProfile = defineFunction({
   name: "gmail.get_profile",
   connector: "gmail",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
   description: "Get the mailbox of the signed-in person: emailAddress, messagesTotal, threadsTotal and historyId. Every other function acts on this mailbox.",
   schema: {"type": "object", "additionalProperties": false, "properties": {}},
@@ -27,6 +28,7 @@ export const listMessages = defineFunction({
   name: "gmail.list_messages",
   connector: "gmail",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
   description: "List the messages of the mailbox, newest first, optionally filtered by a Gmail search query and by labels. Returns ids and thread ids only: read a message with get_message. Spam and trash are left out unless include_spam_trash is true.",
   schema: {
@@ -86,6 +88,7 @@ export const getMessage = defineFunction({
   name: "gmail.get_message",
   connector: "gmail",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
   description: "Get one message by id. format full (default) returns the headers and the MIME parts, whose bodies are base64url-encoded in payload.parts[].body.data; an attachment is a part with a filename and a body.attachmentId, to read with get_attachment right away (Gmail issues a new attachment id at each read). format metadata returns the headers only, restricted to metadata_headers when given.",
   schema: {
@@ -133,6 +136,7 @@ export const getThread = defineFunction({
   name: "gmail.get_thread",
   connector: "gmail",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
   description: "Get one conversation by thread id, with every message in it, oldest first. Same formats as get_message.",
   schema: {
@@ -179,6 +183,7 @@ export const getAttachment = defineFunction({
   name: "gmail.get_attachment",
   connector: "gmail",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
   description: "Get the content of one attachment of a message: size and data, base64url-encoded. The attachment id comes from a get_message or get_thread read just before: Gmail issues a new one at each read.",
   schema: {
@@ -219,6 +224,7 @@ export const listLabels = defineFunction({
   name: "gmail.list_labels",
   connector: "gmail",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
   description: "List the labels of the mailbox, system (INBOX, UNREAD, SENT, STARRED…) and user-created, with their ids.",
   schema: {"type": "object", "additionalProperties": false, "properties": {}},
@@ -242,6 +248,7 @@ export const listDrafts = defineFunction({
   name: "gmail.list_drafts",
   connector: "gmail",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
   description: "List the drafts of the mailbox, optionally filtered by a Gmail search query. Returns draft ids with their message id: read one with get_draft.",
   schema: {
@@ -293,6 +300,7 @@ export const getDraft = defineFunction({
   name: "gmail.get_draft",
   connector: "gmail",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/gmail.readonly"],
   description: "Get one draft by id, with its message. Same formats as get_message.",
   schema: {
@@ -329,6 +337,7 @@ export const modifyMessageLabels = defineFunction({
   name: "gmail.modify_message_labels",
   connector: "gmail",
   class: "write",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/gmail.modify"],
   description: "Add labels to a message, remove labels from it, or both. Archive by removing INBOX, mark as read by removing UNREAD, star by adding STARRED. Returns the message id and its labels.",
   schema: {
@@ -380,6 +389,7 @@ export const trashMessage = defineFunction({
   name: "gmail.trash_message",
   connector: "gmail",
   class: "sensitive",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/gmail.modify"],
   description: "Move a message to the trash. Gmail deletes it for good after 30 days; until then untrash_message brings it back.",
   schema: {
@@ -416,6 +426,7 @@ export const untrashMessage = defineFunction({
   name: "gmail.untrash_message",
   connector: "gmail",
   class: "write",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/gmail.modify"],
   description: "Take a message out of the trash, back to where it was.",
   schema: {
@@ -451,6 +462,7 @@ export const deleteDraft = defineFunction({
   name: "gmail.delete_draft",
   connector: "gmail",
   class: "sensitive",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/gmail.modify"],
   description: "Delete a draft for good. It does not go to the trash and cannot be restored.",
   schema: {
@@ -483,6 +495,7 @@ export const sendDraft = defineFunction({
   name: "gmail.send_draft",
   connector: "gmail",
   class: "sensitive",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/gmail.modify"],
   description: "Send an existing draft as it stands, to the recipients written in it. The draft leaves the drafts list and the message lands in SENT. Read it with get_draft first to check its recipients and content. Returns the sent message id and its thread id.",
   schema: {

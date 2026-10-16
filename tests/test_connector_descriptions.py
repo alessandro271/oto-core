@@ -435,3 +435,79 @@ def test_invalid_url_identity_is_rejected(mutate):
     mutate(description)
     with pytest.raises(ValidationError):
         _validate(description)
+
+
+# --- Compte de l'hôte et compte rattaché ---------------------------------------------
+
+IDENTITY = {"name": "account_id", "label": "Hosted account", "pattern": "^[A-Za-z0-9_-]{1,64}$"}
+
+
+def _hosted(d):
+    """Sellsy, chaque champ du credential fourni par l'hôte, et un compte rattaché cité par l'adresse de base."""
+    for field in d["connector"]["credential"]:
+        field["holder"] = "host"
+    d["connector"]["account_identity"] = dict(IDENTITY)
+    d["connector"]["base_url"] += "/{account_id}"
+
+
+def test_hosted_account_base_is_valid():
+    """Les variantes ci-dessous partent d'une description valide : chacune n'échoue que par sa faute."""
+    description = _sellsy()
+    _hosted(description)
+    _validate(description)
+
+
+def test_holder_defaults_to_account():
+    description = _sellsy()
+    description["connector"]["credential"][0]["holder"] = "account"
+    _validate(description)
+
+
+def _holder_unknown(d):
+    _hosted(d)
+    d["connector"]["credential"][0]["holder"] = "organisation"
+
+
+def _host_holder_in_a_consent(d):
+    _oauth2_user(d)
+    d["connector"]["credential"] = [{"name": "api_key", "label": "API key", "secret": True, "holder": "host"}]
+
+
+def _identity_pattern_not_anchored(d):
+    _hosted(d)
+    d["connector"]["account_identity"]["pattern"] = "[A-Za-z0-9_-]+"
+
+
+def _identity_name_not_an_identifier(d):
+    _hosted(d)
+    d["connector"]["account_identity"]["name"] = "Account-Id"
+
+
+def _identity_without_pattern(d):
+    _hosted(d)
+    del d["connector"]["account_identity"]["pattern"]
+
+
+def _identity_unknown_key(d):
+    _hosted(d)
+    d["connector"]["account_identity"]["default"] = "abc"
+
+
+@pytest.mark.parametrize("mutate", [
+    _holder_unknown, _host_holder_in_a_consent, _identity_pattern_not_anchored, _identity_name_not_an_identifier,
+    _identity_without_pattern, _identity_unknown_key,
+], ids=lambda f: f.__name__.lstrip("_"))
+def test_invalid_hosted_account_is_rejected(mutate):
+    description = _sellsy()
+    mutate(description)
+    with pytest.raises(ValidationError):
+        _validate(description)
+
+
+def test_act_is_a_boolean():
+    description = _sellsy()
+    description["functions"][0]["act"] = False
+    _validate(description)
+    description["functions"][0]["act"] = "no"
+    with pytest.raises(ValidationError):
+        _validate(description)

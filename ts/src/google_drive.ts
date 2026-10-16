@@ -5,6 +5,7 @@ export const getAbout = defineFunction({
   name: "google_drive.get_about",
   connector: "google_drive",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/drive.readonly"],
   description: "Get the signed-in person (displayName, emailAddress, permissionId) and the storage quota of their Drive. Every other function acts on their behalf.",
   schema: {"type": "object", "additionalProperties": false, "properties": {}},
@@ -28,6 +29,7 @@ export const listFiles = defineFunction({
   name: "google_drive.list_files",
   connector: "google_drive",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/drive.readonly"],
   description: "List or search files and folders with a Drive query. Trashed items are included unless the query says trashed = false. Children of a folder: '<folder id>' in parents and trashed = false. By name: name contains 'report'. Folders only: mimeType = 'application/vnd.google-apps.folder'. corpora user (default) covers My Drive and what is shared with the person; drive with drive_id, one shared drive; allDrives, everything.",
   schema: {
@@ -96,6 +98,7 @@ export const getFile = defineFunction({
   name: "google_drive.get_file",
   connector: "google_drive",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/drive.readonly"],
   description: "Get the metadata of one file or folder by id: name, type, size, dates, owners, parent folder, shared drive, link, and whether it is trashed.",
   schema: {
@@ -132,6 +135,7 @@ export const listSharedDrives = defineFunction({
   name: "google_drive.list_shared_drives",
   connector: "google_drive",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/drive.readonly"],
   description: "List the shared drives the signed-in person belongs to. A shared drive id is the drive_id of list_files.",
   schema: {
@@ -178,6 +182,7 @@ export const listPermissions = defineFunction({
   name: "google_drive.list_permissions",
   connector: "google_drive",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/drive.readonly"],
   description: "List who has access to a file or folder: permission id, type (user, group, domain, anyone), role and email address. A permission id is what delete_permission takes.",
   schema: {
@@ -225,6 +230,7 @@ export const createFolder = defineFunction({
   name: "google_drive.create_folder",
   connector: "google_drive",
   class: "write",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/drive"],
   description: "Create a folder, at the root of My Drive or inside a parent folder. Returns its id, name, parent and link.",
   schema: {
@@ -268,6 +274,7 @@ export const renameFile = defineFunction({
   name: "google_drive.rename_file",
   connector: "google_drive",
   class: "write",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/drive"],
   description: "Rename a file or folder. Returns its id, new name and link.",
   schema: {
@@ -305,6 +312,7 @@ export const moveFile = defineFunction({
   name: "google_drive.move_file",
   connector: "google_drive",
   class: "write",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/drive"],
   description: "Move a file or folder from its parent folder to another: remove_parent_id is its current parent, from get_file. Returns its id, name and parents.",
   schema: {
@@ -347,6 +355,7 @@ export const trashFile = defineFunction({
   name: "google_drive.trash_file",
   connector: "google_drive",
   class: "sensitive",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/drive"],
   description: "Move a file or folder to the trash, for every person who has access. Google deletes it for good after 30 days; until then untrash_file brings it back. Only its owner, or a manager of its shared drive, can trash it.",
   schema: {
@@ -384,6 +393,7 @@ export const untrashFile = defineFunction({
   name: "google_drive.untrash_file",
   connector: "google_drive",
   class: "write",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/drive"],
   description: "Take a file or folder out of the trash, back to its folder.",
   schema: {
@@ -420,6 +430,7 @@ export const shareFile = defineFunction({
   name: "google_drive.share_file",
   connector: "google_drive",
   class: "sensitive",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/drive"],
   description: "Give one person access to a file or folder, by email address, as reader, commenter or writer. With notify true, Google emails them the link. Returns the permission id.",
   schema: {
@@ -460,6 +471,7 @@ export const deletePermission = defineFunction({
   name: "google_drive.delete_permission",
   connector: "google_drive",
   class: "sensitive",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/drive"],
   description: "Remove one access to a file or folder, by permission id from list_permissions. The owner's permission cannot be removed.",
   schema: {

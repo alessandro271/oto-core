@@ -5,6 +5,7 @@ export const searchCompanies = defineFunction({
   name: "pappers.search_companies",
   connector: "pappers",
   class: "read",
+  act: false,
   description: "Search French companies by name and criteria: {total, page, curseurSuivant, resultats: [{siren, nom_entreprise, denomination, forme_juridique, code_naf, libelle_code_naf, date_creation, entreprise_cessee, statut_rcs, siege: {siret, adresse_ligne_1, code_postal, ville}, capital, effectif, chiffre_affaires, resultat}]}. The siren of a result is what get_company takes. Every criterion is optional; dates are DD-MM-YYYY. Page-based browsing stops at the first 400 results: to go further, pass curseur \"*\" then each curseurSuivant returned. A 404 means no company matches.",
   schema: {
     "type": "object",
@@ -98,6 +99,7 @@ export const getCompany = defineFunction({
   name: "pappers.get_company",
   connector: "pappers",
   class: "read",
+  act: false,
   description: "Get the full record of one French company by SIREN (with all its establishments in etablissements) or by SIRET (that establishment only, in etablissement). It holds identity and legal form, capital, NAF code, register status, head office, representants (legal representatives: qualites, nom, prenom, date_de_naissance_formate, nationalite, or denomination and siren for a legal person), beneficiaires_effectifs (beneficial owners and their share and vote percentages, when the key is entitled to them), procedure_collective_existe, procedure_collective_en_cours and procedures_collectives ([{type, date_debut, date_fin, publications_bodacc}]), publications_bodacc, depots_actes, comptes and finances. diffusable false means the company restricts its Insee data: names and address may be null. A 206 answer is partial: one source did not answer in time. Some extra_fields cost extra credits, listed in their description.",
   schema: {
     "type": "object",
@@ -171,6 +173,7 @@ export const searchRepresentatives = defineFunction({
   name: "pappers.search_representatives",
   connector: "pappers",
   class: "read",
+  act: false,
   description: "Search the legal representatives of French companies (directors, managers, chairpersons, statutory auditors, natural or legal persons): {total, page, resultats: [{nom_complet, nom, prenom, qualites, date_de_naissance_formate, age, nationalite, personne_morale, denomination, siren, actuel, date_prise_de_poste, date_depart_de_poste, nb_entreprises_total, entreprises: [{siren, nom_entreprise, ...}]}]}. Find everyone who runs a company (siren), or every company one person runs (q, or nom_dirigeant with prenom_dirigeant, narrowed by birth date). Dates are DD-MM-YYYY. A 404 means nobody matches.",
   schema: {
     "type": "object",
@@ -231,6 +234,7 @@ export const getCreditUsage = defineFunction({
   name: "pappers.get_credit_usage",
   connector: "pappers",
   class: "read",
+  act: false,
   description: "Get the credit usage of this Pappers key: jetons_abonnement (monthly credits of the plan), jetons_abonnement_utilises (used this month), jetons_pay_as_you_go_restants (prepaid credits left). Read it before a large search.",
   schema: {"type": "object", "additionalProperties": false, "properties": {}},
   examples: [
@@ -255,7 +259,7 @@ export const connector = defineConnector({
   apiVersion: "v2",
   baseUrl: "https://api.pappers.fr/v2",
   auth: {"kind": "api_key", "in": "header", "name": "api-key", "key": "api_key"},
-  credential: [{"name": "api_key", "label": "API key", "secret": true}],
+  credential: [{"name": "api_key", "label": "API key", "secret": true, "holder": "account"}],
   modes: ["byo_org"],
   timeoutMs: 60000,
   queryArrays: "comma",

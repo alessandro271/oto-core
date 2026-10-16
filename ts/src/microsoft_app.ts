@@ -5,6 +5,7 @@ export const listMessages = defineFunction({
   name: "microsoft_app.list_messages",
   connector: "microsoft_app",
   class: "read",
+  act: false,
   description: "List the messages of the account's mailbox, every folder included, newest first unless orderby says otherwise: {value: [{id, subject, from, toRecipients, receivedDateTime, isRead, hasAttachments, bodyPreview, body, parentFolderId, conversationId, webLink}]}; bodies come as text. search is a KQL query in double quotes (\"from:dupont subject:invoice\"), ranked by relevance; it cannot be combined with filter, orderby or skip. filter is OData (receivedDateTime ge 2026-10-01T00:00:00Z and hasAttachments eq true); a property in orderby must also come first in filter. Needs the application permission Mail.Read. Granted in Microsoft Entra, it opens every mailbox of the tenant to the application, not only this account's, unless the admin grants it through Exchange RBAC for Applications and removes it from Entra.",
   schema: {
     "type": "object",
@@ -81,6 +82,7 @@ export const listFolderMessages = defineFunction({
   name: "microsoft_app.list_folder_messages",
   connector: "microsoft_app",
   class: "read",
+  act: false,
   description: "List the messages of one folder of the account's mailbox, same answer and query rules as list_messages. folder is a folder id or a well-known name: inbox, sentitems, drafts, deleteditems, archive, junkemail.",
   schema: {
     "type": "object",
@@ -162,6 +164,7 @@ export const getMessage = defineFunction({
   name: "microsoft_app.get_message",
   connector: "microsoft_app",
   class: "read",
+  act: false,
   description: "Get one message of the account's mailbox by id: subject, from, sender, toRecipients, ccRecipients, receivedDateTime, sentDateTime, body (as text), hasAttachments, internetMessageId, conversationId, webLink. Needs Mail.Read (application).",
   schema: {
     "type": "object",
@@ -224,6 +227,7 @@ export const listAttachments = defineFunction({
   name: "microsoft_app.list_attachments",
   connector: "microsoft_app",
   class: "read",
+  act: false,
   description: "List the attachments of one message, metadata only: {value: [{id, name, contentType, size, isInline, lastModifiedDateTime}]}; size is in bytes. The content is not returned. Needs Mail.Read (application).",
   schema: {
     "type": "object",
@@ -255,6 +259,7 @@ export const createDraft = defineFunction({
   name: "microsoft_app.create_draft",
   connector: "microsoft_app",
   class: "write",
+  act: true,
   description: "Create a draft in the Drafts folder of the account's mailbox, without sending it, and return it with its id and webLink, where someone can review and send it from Outlook. Needs Mail.ReadWrite (application).",
   schema: {
     "type": "object",
@@ -345,6 +350,7 @@ export const sendMail = defineFunction({
   name: "microsoft_app.send_mail",
   connector: "microsoft_app",
   class: "sensitive",
+  act: true,
   description: "Send an email from the account's mailbox, at once: it leaves for its recipients and, unless save_to_sent_items is false, is kept in Sent Items. Nothing is returned (202). Prefer create_draft when a person should read it first. Needs the application permission Mail.Send. Granted in Microsoft Entra, it lets the application send as any mailbox of the tenant, not only this account's, unless the admin grants it through Exchange RBAC for Applications and removes it from Entra.",
   schema: {
     "type": "object",
@@ -487,7 +493,7 @@ export const connector = defineConnector({
     "scope": "https://graph.microsoft.com/.default",
     "expiresInDefault": 3599
   },
-  credential: [{"name": "client_id", "label": "Application (client) ID", "secret": false}, {"name": "client_secret", "label": "Client secret", "secret": true}],
+  credential: [{"name": "client_id", "label": "Application (client) ID", "secret": false, "holder": "account"}, {"name": "client_secret", "label": "Client secret", "secret": true, "holder": "account"}],
   settings: [
     {
       "name": "tenant",

@@ -5,6 +5,7 @@ export const listSignatureRequests = defineFunction({
   name: "yousign.list_signature_requests",
   connector: "yousign",
   class: "read",
+  act: false,
   description: "List the signature requests of the organization, newest first: {meta: {next_cursor}, data: [{id, name, status, created_at, activated_at, completed_at, expiration_date, source, external_id, workspace_id, signers: [{id, status}], documents: [{id, nature}]}]}. status: draft (not sent), ongoing (waiting for signers), done (every signer signed), approval, paused, expired, canceled, declined, rejected, deleted. By default only the requests created through the API are listed: pass source [public_api, app] to include those created in the Yousign app. Dates are YYYY-MM-DD. To get the next page, pass meta.next_cursor as after.",
   schema: {
     "type": "object",
@@ -89,6 +90,7 @@ export const getSignatureRequest = defineFunction({
   name: "yousign.get_signature_request",
   connector: "yousign",
   class: "read",
+  act: false,
   description: "Get one signature request by id: name, status, dates (created_at, activated_at, completed_at, expiration_date), signers [{id, status}] (initiated, notified, verified, processing, consent_given, signed, declined, aborted, error), approvers, documents [{id, nature}], sender, workspace_id, external_id. Only status done means every signer signed.",
   schema: {
     "type": "object",
@@ -116,6 +118,7 @@ export const listTemplates = defineFunction({
   name: "yousign.list_templates",
   connector: "yousign",
   class: "read",
+  act: false,
   description: "List the signature templates of the organization: {meta: {next_cursor}, data: [{id, name, description, status, created_at, workspace_id}]}. Only an active template can start a signature request. Its id is the template_id of get_template and create_signature_request_from_template.",
   schema: {
     "type": "object",
@@ -153,6 +156,7 @@ export const getTemplate = defineFunction({
   name: "yousign.get_template",
   connector: "yousign",
   class: "read",
+  act: false,
   description: "Get one signature template: name, status, workspace_id, expiration_delay, and placeholders: {signers: [{label}], read_only_text_fields: [{label}], documents}, the slots a signature request created from it must fill, matched by label.",
   schema: {
     "type": "object",
@@ -180,6 +184,7 @@ export const createSignatureRequestFromTemplate = defineFunction({
   name: "yousign.create_signature_request_from_template",
   connector: "yousign",
   class: "write",
+  act: true,
   description: "Create a draft signature request from an active template, with its documents and fields; nothing is sent until activation. Fill each signer placeholder of the template (get_template) by its label, with the signer's identity; every signer is notified by email at activation. Returns the request, with its id and status draft.",
   schema: {
     "type": "object",
@@ -297,6 +302,7 @@ export const addSigner = defineFunction({
   name: "yousign.add_signer",
   connector: "yousign",
   class: "write",
+  act: true,
   description: "Add a signer to a draft signature request; they are emailed at activation. A signer needs at least one signature field on a document: for a request built from a template, fill the signer placeholders at creation instead. Returns the signer, with its id and status.",
   schema: {
     "type": "object",
@@ -389,6 +395,7 @@ export const activateSignatureRequest = defineFunction({
   name: "yousign.activate_signature_request",
   connector: "yousign",
   class: "sensitive",
+  act: true,
   description: "Activate a draft signature request: Yousign emails every signer (and approver) an invitation to sign, and the request becomes ongoing (or approval). It cannot be undone here. The request needs at least one document and, for each signer, a signature field. Returns the request; signature links are not returned.",
   schema: {
     "type": "object",
@@ -423,7 +430,7 @@ export const connector = defineConnector({
   apiVersion: "v3",
   baseUrls: {"setting": "environment", "values": {"production": "https://api.yousign.app/v3", "sandbox": "https://api-sandbox.yousign.app/v3"}},
   auth: {"kind": "bearer", "token": "api_key"},
-  credential: [{"name": "api_key", "label": "API key", "secret": true}],
+  credential: [{"name": "api_key", "label": "API key", "secret": true, "holder": "account"}],
   settings: [{"name": "environment", "label": "Environment", "type": "choice", "choices": ["production", "sandbox"]}],
   modes: ["byo_org"],
   timeoutMs: 60000,

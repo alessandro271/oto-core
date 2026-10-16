@@ -9,6 +9,7 @@ import * as googleCalendar from "./google_calendar"
 import * as googleDrive from "./google_drive"
 import * as googleSheets from "./google_sheets"
 import * as klaviyo from "./klaviyo"
+import * as linkedinUnipile from "./linkedin_unipile"
 import * as mailpool from "./mailpool"
 import * as metaAds from "./meta_ads"
 import * as microsoft from "./microsoft"
@@ -36,6 +37,7 @@ export { googleCalendar }
 export { googleDrive }
 export { googleSheets }
 export { klaviyo }
+export { linkedinUnipile }
 export { mailpool }
 export { metaAds }
 export { microsoft }
@@ -65,6 +67,7 @@ export const connectors: readonly Connector[] = [
   googleDrive.connector,
   googleSheets.connector,
   klaviyo.connector,
+  linkedinUnipile.connector,
   mailpool.connector,
   metaAds.connector,
   microsoft.connector,

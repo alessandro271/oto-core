@@ -27,8 +27,8 @@ pas dire :
 6. les réglages : un nom n'est déclaré qu'une fois parmi `credential`, `settings` et
    `from_token` ; le défaut d'une liste fermée en est une valeur ; un gabarit d'adresse
    (`base_url`, `token_url`, `authorize_url`) ne cite que des réglages déclarés (et,
-   pour `base_url`, des valeurs de `from_token`), une adresse libre en tête seulement,
-   un autre réglage après `https://` seulement ; `base_urls` et `token_urls` portent
+   pour `base_url`, des valeurs de `from_token` et l'identité du compte, règle 8), une
+   adresse libre en tête seulement, un autre réglage après `https://` seulement ; `base_urls` et `token_urls` portent
    sur une liste fermée et donnent une adresse à chacune de ses valeurs, et rien
    d'autre ; tout réglage déclaré est cité ;
 7. les niveaux d'accès (`auth.access_levels`, voir docs/conception/niveaux-d-acces.md) :
@@ -37,7 +37,16 @@ pas dire :
    l'implication dit la même chose) et chacune de ses clés est un droit d'un
    niveau ; `full` couvre chaque droit d'un niveau restreint et chaque droit exigé
    par une fonction (`full` ne filtre rien) ; l'identité du consentement et la
-   sonde sont servies à chaque niveau.
+   sonde sont servies à chaque niveau ;
+8. l'identité d'un compte rattaché (`account_identity`, l'identifiant du compte chez
+   un tiers qui héberge les comptes de ses utilisateurs) : son nom n'est ni celui
+   d'un champ de `credential`, ni d'un réglage, ni d'une valeur de `from_token` ;
+   elle est citée par `base_url`, ou par chaque adresse de `base_urls`, après l'hôte
+   seulement, et par aucune autre adresse ; aucun argument d'entrée, aucun nom côté
+   API de `call` (paramètre du chemin, de query, de corps, en-tête), aucune constante
+   ni aucun en-tête constant ne porte son nom : l'agent ne la fournit jamais ;
+9. `act` suit la classe : jamais `false` sur une fonction `sensitive`, jamais `true`
+   sur une fonction `read` ; absent, il vaut `false` pour `read`, `true` sinon.
 
 Un fichier fautif lève `DescriptionError`, qui nomme le fichier, la fonction et la
 règle : la fabrique ne génère alors rien.
@@ -59,6 +68,8 @@ SCHEMA_PATH = CONNECTORS / "connector.schema.json"
 PATH_PARAM = re.compile(r"\{([^{}]*)\}")
 AUTH_REFERENCES = ("key", "token", "username", "password", "client_id", "client_secret")
 PLACES = ("query", "body", "headers")
+# Ce qui précède l'identité d'un compte dans une adresse : le schéma et l'hôte (ou une adresse libre en tête), puis `/`.
+AFTER_HOST = re.compile(r"^(https://[^/{}]+|\{[a-z][a-z0-9_]*\})/")
 
 
 class DescriptionError(ValueError):
@@ -207,6 +218,20 @@ def check_constants(connector: dict, function: dict, where: str) -> None:
             seen[header.lower()] = source
 
 
+def act(function: dict) -> bool:
+    """Ce qui engage ou détruit : `act` déclaré, sinon déduit de la classe (`read` → false, `write` et `sensitive` → true)."""
+    return function.get("act", function["class"] != "read")
+
+
+def check_act(function: dict, where: str) -> None:
+    """Règle 9 : `act` ne contredit pas la classe."""
+    declared = function.get("act")
+    if declared is False and function["class"] == "sensitive":
+        raise DescriptionError(f"{where}: function {function['name']}: a sensitive function cannot declare act: false")
+    if declared is True and function["class"] == "read":
+        raise DescriptionError(f"{where}: function {function['name']}: a read function cannot declare act: true")
+
+
 def check_checks(function: dict, where: str) -> None:
     """Règle 4 : un contrôle nomme un refus de sa fonction, et `equal_sums` une liste qui a ses deux champs."""
     name = function["name"]
@@ -252,12 +277,18 @@ def check_probe(data: dict, where: str) -> None:
             raise DescriptionError(f"{where}: auth.identity needs {', '.join(beyond)}, which auth.scopes does not ask for")
 
 
-def _check_template(template: str, at: str, settings: dict[str, dict], from_token: set[str], where: str) -> set[str]:
-    """Un gabarit d'adresse : chaque `{nom}` est un réglage déclaré (ou une valeur du jeton), à sa place."""
+def _check_template(
+    template: str, at: str, settings: dict[str, dict], from_token: set[str], where: str, identity: str | None = None,
+) -> set[str]:
+    """Un gabarit d'adresse : chaque `{nom}` est un réglage déclaré (ou une valeur du jeton, ou l'identité du compte
+    quand `identity` la nomme), à sa place."""
     cited = PATH_PARAM.findall(template)
     for position, name in enumerate(cited):
         head = position == 0 and template.startswith("{")
         if name in from_token:
+            continue
+        if name == identity:
+            _check_identity_place(template, at, name, where)
             continue
         setting = settings.get(name)
         if setting is None:
@@ -272,7 +303,17 @@ def _check_template(template: str, at: str, settings: dict[str, dict], from_toke
     return set(cited)
 
 
-def _check_urls_by_setting(urls: dict, at: str, settings: dict[str, dict], where: str) -> set[str]:
+def _check_identity_place(url: str, at: str, identity: str, where: str) -> None:
+    if not AFTER_HOST.match(url[: url.index("{" + identity + "}")]):
+        raise DescriptionError(f"{where}: {at} cites the account identity {{{identity}}} elsewhere than after the host")
+
+
+def _check_urls_by_setting(urls: dict, at: str, settings: dict[str, dict], where: str, identity: str | None = None) -> set[str]:
+    for url in urls["values"].values():
+        for name in PATH_PARAM.findall(url):
+            if name != identity:
+                raise DescriptionError(f"{where}: {at}.values cites {{{name}}}, which is not the account identity")
+            _check_identity_place(url, f"{at}.values", name, where)
     setting = settings.get(urls["setting"])
     if setting is None or setting["type"] != "choice":
         raise DescriptionError(f"{where}: {at}.setting names {urls['setting']!r}, which is not a choice setting")
@@ -297,11 +338,12 @@ def check_settings(connector: dict, where: str) -> None:
     for setting in settings.values():
         if "default" in setting and setting["default"] not in setting["choices"]:
             raise DescriptionError(f"{where}: setting {setting['name']!r}: default {setting['default']!r} is not one of its choices")
+    identity = (connector.get("account_identity") or {}).get("name")
     cited: set[str] = set()
     if "base_url" in connector:
-        cited |= _check_template(connector["base_url"], "base_url", settings, from_token, where)
+        cited |= _check_template(connector["base_url"], "base_url", settings, from_token, where, identity)
     if "base_urls" in connector:
-        cited |= _check_urls_by_setting(connector["base_urls"], "base_urls", settings, where)
+        cited |= _check_urls_by_setting(connector["base_urls"], "base_urls", settings, where, identity)
     for key in ("token_url", "authorize_url"):
         if key in auth:
             cited |= _check_template(auth[key], f"auth.{key}", settings, set(), where)
@@ -310,6 +352,64 @@ def check_settings(connector: dict, where: str) -> None:
     unused = sorted(set(settings) - cited)
     if unused:
         raise DescriptionError(f"{where}: setting(s) {', '.join(unused)} cited by no URL")
+
+
+def check_account_identity(data: dict, where: str) -> None:
+    """Règle 8 : l'identité d'un compte rattaché a un nom à elle, n'est citée que par l'adresse de base, après l'hôte, et
+    jamais fournie par l'agent. La place dans le gabarit se vérifie avec les réglages (règle 6)."""
+    connector = data["connector"]
+    declared = connector.get("account_identity")
+    if declared is None:
+        return
+    identity = declared["name"]
+    for kind, names in (
+        ("a credential field", [f["name"] for f in connector.get("credential", [])]),
+        ("a setting", [s["name"] for s in connector.get("settings", [])]),
+        ("a value of auth.from_token", connector["auth"].get("from_token", [])),
+    ):
+        if identity in names:
+            raise DescriptionError(f"{where}: account_identity {identity!r} is also the name of {kind}")
+    if "base_url" in connector:
+        urls = [("base_url", connector["base_url"])]
+    else:
+        urls = [(f"base_urls.values.{k}", v) for k, v in (connector.get("base_urls") or {}).get("values", {}).items()]
+    if not urls:
+        raise DescriptionError(f"{where}: account_identity {identity!r} needs a base_url that cites it")
+    for at, url in urls:
+        if "{" + identity + "}" not in url:
+            raise DescriptionError(f"{where}: {at} does not cite the account identity {{{identity}}}")
+    auth = connector["auth"]
+    others = [(f"auth.{key}", auth[key]) for key in ("token_url", "authorize_url") if key in auth]
+    others += [(f"auth.token_urls.values.{k}", v) for k, v in (auth.get("token_urls") or {}).get("values", {}).items()]
+    for at, url in others:
+        if identity in PATH_PARAM.findall(url):
+            raise DescriptionError(f"{where}: {at} cites the account identity {{{identity}}}, which only the base URL cites")
+    if identity.lower() in {header.lower() for header in connector.get("headers") or {}}:
+        raise DescriptionError(f"{where}: the connector header {identity!r} bears the name of the account identity")
+    for function in data["functions"]:
+        name = function["name"]
+        if identity in function["input"]["properties"]:
+            raise DescriptionError(
+                f"{where}: function {name}: input argument {identity!r} bears the name of the account identity, "
+                "which only the base URL cites"
+            )
+        call = function.get("call")
+        if call is None:
+            continue
+        if identity in PATH_PARAM.findall(call["path"]):
+            raise DescriptionError(f"{where}: function {name}: the path cites the account identity {{{identity}}}")
+        for kind in PLACES:
+            mapping = call.get(kind) or {}
+            api_names = {n.lower() for n in mapping} if kind == "headers" else set(mapping)
+            if identity in api_names or identity in mapping.values():
+                raise DescriptionError(
+                    f"{where}: function {name}: {kind} parameter {identity!r} bears the name of the account identity"
+                )
+        for kind, constants in (call.get("constants") or {}).items():
+            if identity in ({n.lower() for n in constants} if kind == "headers" else set(constants)):
+                raise DescriptionError(
+                    f"{where}: function {name}: constant {kind} {identity!r} bears the name of the account identity"
+                )
 
 
 def covered(scopes: list[str], implies: dict[str, list[str]]) -> set[str]:
@@ -379,11 +479,13 @@ def check(data: dict, path: pathlib.Path) -> Description:
     if data["connector"]["name"] != path.parent.name:
         raise DescriptionError(f"{where}: connector.name {data['connector']['name']!r} is not the folder name")
     check_auth(data["connector"], where)
+    check_account_identity(data, where)
     check_settings(data["connector"], where)
     for function in data["functions"]:
         check_arguments(function, where)
         check_constants(data["connector"], function, where)
         check_checks(function, where)
+        check_act(function, where)
     names = [function["name"] for function in data["functions"]]
     twice = sorted({n for n in names if names.count(n) > 1})
     if twice:

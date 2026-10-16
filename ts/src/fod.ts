@@ -5,6 +5,7 @@ export const companySearch = defineFunction({
   name: "fod.company_search",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Search French companies (all legal units, from the national company register open data) by cumulative criteria: name, activity, place, size, legal form, collective agreement. Use it to identify a contract party when its SIREN is unknown, or to find the companies of a person's group. The name goes in query; a legal form spoken with the name (\"SCI Les Tilleuls\") does not belong there: put the name alone in query and the form in nature_juridique (6540 = SCI, 5710 = SAS, 5499 = SARL). Returns {results: [{siren, nom_complet, siege, dirigeants, finances, ...}], total_results, page, per_page, total_pages}. At least one criterion is required.",
   schema: {
     "type": "object",
@@ -94,6 +95,7 @@ export const companyGet = defineFunction({
   name: "fod.company_get",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Get the full record of one French company by its SIREN: identity, legal form, registered office, activity, headcount band, VAT number, closure status (etat_administratif, date_fermeture), latest summary accounts, officers, collective agreements and some thirty labels. Use it to check that a contract party exists, is active, and is what the contract says it is.",
   schema: {
     "type": "object",
@@ -125,6 +127,7 @@ export const companyListDirectors = defineFunction({
   name: "fod.company_list_directors",
   connector: "fod",
   class: "read",
+  act: false,
   description: "List the officers of a French company as declared in the national register (RNE): [{nom, prenoms, date_de_naissance, qualite, type_dirigeant}]. An officer is a natural person or a legal person (type_dirigeant \"personne morale\", with its own siren): a subsidiary is often chaired by a company. Use it to check who has power to sign for a company that is a contract party. Empty list when none is declared or the SIREN is unknown.",
   schema: {
     "type": "object",
@@ -151,6 +154,7 @@ export const companyListBodaccNotices = defineFunction({
   name: "fod.company_list_bodacc_notices",
   connector: "fod",
   class: "read",
+  act: false,
   description: "List the BODACC legal notices of a French company, newest first: insolvency proceedings, changes, filing of accounts, sales and transfers of a business, registrations and deregistrations. Returns {results: [{dateparution, familleavis, familleavis_lib, tribunal, texte, ...}], total_count}. Use it before contracting with a company: an insolvency proceeding (famille collective) is the strongest signal read here, and the publication date is not the date of the judgment.",
   schema: {
     "type": "object",
@@ -197,6 +201,7 @@ export const companyListFiscalYears = defineFunction({
   name: "fod.company_list_fiscal_years",
   connector: "fod",
   class: "read",
+  act: false,
   description: "List the fiscal years of a French company for which annual accounts were filed with INPI, newest first: [{date_cloture_exercice, type_bilan, confidentiality, chiffre_d_affaires, ...}]. A confidential filing has no figures. Gives the exact closing date a balance sheet is read by. The first call after a restart of the service is slow.",
   schema: {
     "type": "object",
@@ -223,6 +228,7 @@ export const companyGetBalanceSheet = defineFunction({
   name: "fod.company_get_balance_sheet",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Get the balance sheet of one fiscal year of a French company, as filed with INPI: the raw items of the tax return (CERFA 2050-2053 or 2033, under liasse, keyed by item code), with turnover and net result derived from them. Use it to assess the financial standing of a contract party, such as a customer, a supplier or a guarantor. date_cloture must be exactly one of the closing dates of this company's filed fiscal years.",
   schema: {
     "type": "object",
@@ -257,6 +263,7 @@ export const propertyGeocodeAddress = defineFunction({
   name: "fod.property_geocode_address",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Geocode a French address with the national address base (BAN), best match first: [{label, score, lon, lat, type, citycode, city, postcode}]. citycode is the INSEE code of the commune (an arrondissement code in Paris, Lyon and Marseille). Use it to normalise the address of a property and get the point and commune code that parcel, zoning and risk lookups take. A score under about 0.5 is a doubtful match.",
   schema: {
     "type": "object",
@@ -296,6 +303,7 @@ export const propertyReverseGeocode = defineFunction({
   name: "fod.property_reverse_geocode",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Give the nearest BAN address of a point: {label, score, lon, lat, citycode, city, postcode}.",
   schema: {
     "type": "object",
@@ -330,6 +338,7 @@ export const propertyGetCadastralParcel = defineFunction({
   name: "fod.property_get_cadastral_parcel",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Get the cadastral parcel that contains a point: {idu, commune, code_insee, section, numero, contenance_m2, geometry}. Use it to check the cadastral references and area a document gives for a property. A geocoded house number often falls on the street, outside any parcel: the point must lie inside the plot.",
   schema: {
     "type": "object",
@@ -364,6 +373,7 @@ export const propertyListEnergyRatings = defineFunction({
   name: "fod.property_list_energy_ratings",
   connector: "fod",
   class: "read",
+  act: false,
   description: "List the energy performance diagnoses (DPE, ADEME) of dwellings around an address, nearest first: {adresse_geocodee, code_commune, count, dpe: [{etiquette_dpe, etiquette_ges, conso_ep_kwh_m2_an, surface_habitable, annee_construction, type_batiment, adresse, date_dpe, distance_m}]}. Use it to check the DPE a sale or a lease must carry. In a block of flats a building has many DPE: match by address, surface and date, never by proximity alone.",
   schema: {
     "type": "object",
@@ -416,6 +426,7 @@ export const propertyListComparableSales = defineFunction({
   name: "fod.property_list_comparable_sales",
   connector: "fod",
   class: "read",
+  act: false,
   description: "List the property sales recorded in DVF (land registry transfers, from 2014) around an address, most recent first: {adresse_geocodee, code_commune, count, median_prix_m2, mutations: [{date_mutation, nature_mutation, valeur_fonciere, type_local, surface_reelle_bati, surface_terrain, prix_m2, vefa, id_parcelle, adresse, distance_m}]}. Use it to check a price against the local market or to value an estate property. Every kind of sale is listed (outbuildings, land, mixed premises) unless filtered. DVF does not cover Alsace-Moselle and Mayotte.",
   schema: {
     "type": "object",
@@ -473,6 +484,7 @@ export const propertyGetPriceStats = defineFunction({
   name: "fod.property_get_price_stats",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Get the price per m² statistics of a commune from DVF: {count, median_prix_m2, mean_prix_m2, min_prix_m2, max_prix_m2, by_year: {year: {count, median_prix_m2}}}. Only single flats and houses are counted, and outliers (under 100 or over 50,000 €/m²) are left out. Use it to place a price within its commune.",
   schema: {
     "type": "object",
@@ -516,6 +528,7 @@ export const propertySearchBuildingPermits = defineFunction({
   name: "fod.property_search_building_permits",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Search building and development permits (Sitadel, Ministry for Ecological Transition) by commune, department, year of filing or applicant company: {total, page, page_size, permis: [{type, num_dau, date_depot, date_autorisation, etat, demandeur, adresse, parcelles, logements, surf_hab_creee_m2, ...}]}. kind chooses the file: logements (permits creating dwellings), locaux (non-residential premises), amenager (development permits). Use it to check the permits on a property or a plot: the parcel is not a filter, so search the commune and read the parcelles of each permit. Applicants who are natural persons are not published.",
   schema: {
     "type": "object",
@@ -560,6 +573,7 @@ export const urbanGetZoning = defineFunction({
   name: "fod.urban_get_zoning",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Get the town-planning zoning that applies at a point, from the national town-planning portal (GPU): {zone: {libelle, libelle_long, type_zone, idurba, reglement_url}, zones_superposees, prescriptions, informations, servitudes_utilite_publique, document, documents_couvrants, avertissements}. Use it for the planning information of a property: zone of the local plan (PLU, PLUi), easements of public interest, pre-emption perimeters. zone.idurba and zone.libelle lead to the written regulation of the zone. zone and document are null when the commune has no digitised plan (national planning rules apply, or the plan is not published).",
   schema: {
     "type": "object",
@@ -589,6 +603,7 @@ export const urbanGetZoningRegulation = defineFunction({
   name: "fod.urban_get_zoning_regulation",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Read the written regulation (règlement écrit) of a local plan (PLU, PLUi, PSMV): height, footprint, setbacks, prohibited uses, parking. idurba and zone come from the zoning at the point (zone.idurba, zone.libelle, case kept). With zone alone, the zone's chapter in extraits[0], cut at max_chars (tronque); a sector without its own chapter (UAa) gets its parent zone's (section.zone_chapitre UA). With query too, the passages of that chapter holding it, case and accents ignored, in French (hauteur, emprise au sol, recul). With query alone, passages of the whole document, general provisions included. Returns {idurba, cached, titre, section, nb_occurrences, extraits, note}; section is null when no chapter of the zone is found. Quote the raw extracts, never a figure they do not hold: rules drawn on a graphic document are not in the text. cached false comes with a statut: start the ingestion, then read its state until pret. scanne_probable true means a scanned PDF, unreadable without OCR.",
   schema: {
     "type": "object",
@@ -650,6 +665,7 @@ export const urbanStartRegulationIngestion = defineFunction({
   name: "fod.urban_start_regulation_ingestion",
   connector: "fod",
   class: "write",
+  act: true,
   description: "Ask FOD to fetch and index the written regulation of a local plan it does not hold yet, from the national town-planning portal (GPU). The work runs in the background, from 20 seconds to a few minutes; the answer comes at once with the state {idurba, statut, message, ...}: en_cours (started, or already running), pret or scanne (already held, nothing restarted), echec (a recent failure, erreur gives the cause; no new attempt before relance_possible_apres). Calling it again never starts a second ingestion. Then read the ingestion state every 20 to 30 seconds until pret, scanne or echec. FOD ingests one regulation at a time: a busy answer asks to retry in a minute. A document replaced on the portal is not swapped for its successor; the refusal names the documents published for the same territory.",
   schema: {
     "type": "object",
@@ -684,6 +700,7 @@ export const urbanGetRegulationIngestion = defineFunction({
   name: "fod.urban_get_regulation_ingestion",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Read the state of the ingestion of a local plan's written regulation in FOD: {idurba, statut, message, ...}. statut is absent (never asked), en_cours (with depuis), pret (readable; titre, doc_type, text_chars, and sources, the PDF addresses on the portal), scanne (a scanned PDF, unreadable without OCR: say so and give the source) or echec (erreur gives the cause, relance_possible_apres when a new attempt is allowed).",
   schema: {
     "type": "object",
@@ -716,6 +733,7 @@ export const urbanListCommuneRisks = defineFunction({
   name: "fod.urban_list_commune_risks",
   connector: "fod",
   class: "read",
+  act: false,
   description: "List the natural and technological risks recorded for a commune (Géorisques, GASPAR): {code_insee, risques: [labels]}, such as flood, ground movement, clay shrink-swell, earthquake, radon, industrial risk. Use it to prepare the risk and pollution statement (ERP) annexed to a sale or lease. Takes the commune code: in Paris, Lyon and Marseille the whole city (75056, 69123, 13055), not an arrondissement, whose list comes back empty.",
   schema: {
     "type": "object",
@@ -748,6 +766,7 @@ export const urbanGetClayExposure = defineFunction({
   name: "fod.urban_get_clay_exposure",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Get the clay shrink-swell exposure at a point (Géorisques): {code_exposition, exposition}, from no exposure to strong. In a medium or strong zone, the sale of building land requires a soil study.",
   schema: {
     "type": "object",
@@ -777,6 +796,7 @@ export const urbanListClassifiedFacilities = defineFunction({
   name: "fod.urban_list_classified_facilities",
   connector: "fod",
   class: "read",
+  act: false,
   description: "List the classified facilities for environmental protection (ICPE, Géorisques) of a commune or of one establishment: {results, page, total_pages, data: [{raisonSociale, adresse1, codeInsee, commune, regime, statutSeveso, etatActivite, longitude, latitude, inspections, ...}]}, 20 per page. Use it to spot an industrial site on or near a property, or to check a company's environmental obligations. A SIRET or a commune code is required.",
   schema: {
     "type": "object",
@@ -811,6 +831,7 @@ export const urbanListPublicServices = defineFunction({
   name: "fod.urban_list_public_services",
   connector: "fod",
   class: "read",
+  act: false,
   description: "List public services from the official directory of the administration (Service-Public): town halls, prefectures, tax offices, departmental directorates, public bodies, with phone, email, website, address and named head of service. Returns {total, rendus, tronque, signaux: [{nom, type_service, siren, siret, code_commune, telephone, courriel, site_internet, adresse, affectation_personne, ...}]}. Use it to find the town hall for a pre-emption notice (DIA) or a planning certificate, or the land registration office. A SIREN or a commune code is required.",
   schema: {
     "type": "object",
@@ -854,6 +875,7 @@ export const lawListCodes = defineFunction({
   name: "fod.law_list_codes",
   connector: "fod",
   class: "read",
+  act: false,
   description: "List the consolidated French codes covered, with the short alias the law functions take: {codes: [{alias, legitext, libelle}]}, such as CC (Code civil), CGI (Code général des impôts), CU (Code de l'urbanisme), CCH (Code de la construction et de l'habitation).",
   schema: {"type": "object", "additionalProperties": false, "properties": {}},
   examples: [
@@ -875,6 +897,7 @@ export const lawGetArticle = defineFunction({
   name: "fod.law_get_article",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Get one article of a consolidated French code in the version in force at a date (today by default): {id, titre_texte, num, etat, date_debut, date_fin, texte, nota, source_url}. Use it to quote the exact text that applied on a given day, such as the day a contract was signed. source_url points to that version on Légifrance.",
   schema: {
     "type": "object",
@@ -920,6 +943,7 @@ export const lawSearchArticles = defineFunction({
   name: "fod.law_search_articles",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Full-text search in the articles of the consolidated French codes: {count, articles: [{id, num, etat, date_debut, date_fin, titre_texte, extrait, source_url}]}. The query takes web-search syntax: \"quoted phrase\", OR, -excluded. By default only the versions in force today are searched. Use it to find the article that governs a question when its number is unknown.",
   schema: {
     "type": "object",
@@ -959,6 +983,7 @@ export const lawListArticleVersions = defineFunction({
   name: "fod.law_list_article_versions",
   connector: "fod",
   class: "read",
+  act: false,
   description: "List every version of one code article, oldest first: {count, versions: [{id, etat, date_debut, date_fin, apercu, source_url}]}. Use it to see when an article changed, before reading the version in force at a given date. Empty when the article is unknown.",
   schema: {
     "type": "object",
@@ -997,6 +1022,7 @@ export const lawSearchCaseLaw = defineFunction({
   name: "fod.law_search_case_law",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Search French and European case law, ranked by relevance weighted by the authority of the court: {count, decisions: [{id, fond, titre, juridiction, numero, date_dec, solution, formation, ecli, autorite, extrait}]}. fond picks one collection: cass (Cour de cassation, published), inca (Cour de cassation, unpublished), capp (courts of appeal), jade (administrative courts), constit (Conseil constitutionnel), cnil, cedh (European Court of Human Rights), cjue (Court of Justice of the EU), jade_live (recent administrative decisions), judilibre (recent judicial decisions). Use it to find the case law on a question of succession, property or contract law.",
   schema: {
     "type": "object",
@@ -1047,6 +1073,7 @@ export const lawGetDecision = defineFunction({
   name: "fod.law_get_decision",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Get the full text of one court decision by its id, as case-law search returns it: {id, fond, titre, juridiction, numero, date_dec, solution, formation, ecli, texte, texte_chars, source_url}. The text is cut at max_chars (tronque true); source_url leads to the whole decision.",
   schema: {
     "type": "object",
@@ -1091,6 +1118,7 @@ export const taxSearchBofip = defineFunction({
   name: "fod.tax_search_bofip",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Search the French tax administration's official doctrine (BOFiP-Impôts, DGFiP), commentaries in force only: {total_count, publications: [{identifiant_juridique, titre, serie, type, debut_de_validite, permalien, extrait}], source}. A commentary matches when it holds every word of query: 2 to 5 French keywords (droits de mutation, plus-values, IFI, pacte Dutreil, TVA immobilière); no result means fewer or other words. extrait is 400 characters around the first word found; total_count counts every match, beyond limit. Use it to find how the administration reads a tax rule, then read the commentary by its identifiant_juridique. Doctrine is the administration's reading of the law, not the law itself.",
   schema: {
     "type": "object",
@@ -1126,6 +1154,7 @@ export const taxGetBofipDocument = defineFunction({
   name: "fod.tax_get_bofip_document",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Read one BOFiP-Impôts commentary or news item in force by its reference (identifiant_juridique of a search result): {identifiant_juridique, titre, serie, type, debut_de_validite, permalien, contenu, contenu_chars, tronque, source}. The text is cut at max_chars (tronque true, contenu_chars gives its whole length); permalien is the official page on bofip.impots.gouv.fr. The version suffix of a permalink (-20240319) is accepted and dropped.",
   schema: {
     "type": "object",
@@ -1169,6 +1198,7 @@ export const complianceScreenAssetFreeze = defineFunction({
   name: "fod.compliance_screen_asset_freeze",
   connector: "fod",
   class: "read",
+  act: false,
   description: "Screen a name against the French national register of asset freezes (DG Trésor): persons, entities and ships under a freeze in force in France (UN, EU and national measures). Use it to screen a client, a supplier or a contract party. An entry matches when its name or an alias holds every word of nom, accents, case and punctuation ignored. prenom only orders the matches, never drops one: each carries sur, nom_et_prenom (one of its first names contains prenom) or nom_seul. Returns {publication, inscrits, total, nom_et_prenom, nom_seul, correspondances: [{sur, nature, nom, prenoms, naissance, fondement}], source}; limit bounds the list, never the counts: total above the list length means more matches to read. A match on a common name is not a confirmed freeze: compare first names and date of birth. The name travels in the request body and FOD does not keep it.",
   schema: {
     "type": "object",
@@ -1223,7 +1253,7 @@ export const connector = defineConnector({
   apiVersion: "france-opendata-service 6f69e80 (routes unversioned)",
   baseUrl: "https://data.oto.zone",
   auth: {"kind": "bearer", "token": "api_key"},
-  credential: [{"name": "api_key", "label": "FOD API key", "secret": true}],
+  credential: [{"name": "api_key", "label": "FOD API key", "secret": true, "holder": "account"}],
   modes: ["platform", "byo_org"],
   timeoutMs: 60000,
   errors: [

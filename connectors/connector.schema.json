@@ -103,7 +103,7 @@
       ]
     },
     "url_template": {
-      "description": "An https URL without trailing slash. It may cite settings as {name}: a url setting (or a value read from the token) only at its head, where it stands for the scheme and the host; any other setting after https://.",
+      "description": "An https URL without trailing slash. It may cite settings as {name}: a url setting (or a value read from the token) only at its head, where it stands for the scheme and the host; any other setting after https://. base_url may also cite the account identity (account_identity.name), after the host only.",
       "type": "string",
       "pattern": "^(https://[^\\s]*[^/\\s]|\\{[a-z][a-z0-9_]*\\}([^\\s]*[^/\\s])?)$"
     },
@@ -117,7 +117,11 @@
         "values": {
           "type": "object",
           "minProperties": 2,
-          "additionalProperties": { "type": "string", "pattern": "^https://[^\\s{}]*[^/\\s{}]$" }
+          "additionalProperties": {
+            "description": "An https URL without trailing slash; it may cite the account identity as {name}, after the host only.",
+            "type": "string",
+            "pattern": "^https://[^\\s{}/]+(/([^\\s{}/]|\\{[a-z][a-z0-9_]*\\})+)*$"
+          }
         }
       }
     },
@@ -216,7 +220,7 @@
           "$ref": "#/$defs/text"
         },
         "base_url": {
-          "description": "Root of the call paths, possibly a template over settings. base_url or base_urls is required unless every function is handwritten.",
+          "description": "Root of the call paths, possibly a template over settings and the account identity. base_url or base_urls is required unless every function is handwritten.",
           "$ref": "#/$defs/url_template"
         },
         "base_urls": {
@@ -241,8 +245,24 @@
             "properties": {
               "name": { "$ref": "#/$defs/identifier" },
               "label": { "$ref": "#/$defs/text" },
-              "secret": { "type": "boolean" }
+              "secret": { "type": "boolean" },
+              "holder": {
+                "description": "Who supplies the field. account: entered with the account. host: supplied by the host application, once for all its organisations; never stored with the account, shown or entered.",
+                "enum": ["account", "host"],
+                "default": "account"
+              }
             }
+          }
+        },
+        "account_identity": {
+          "description": "Identifier of the account at a third party that hosts its users' accounts (a hosted messaging service), one value per account. Cited only by base_url, never by an argument, a call parameter or a constant: the agent never supplies it, the host writes it through a service that checks it with the third party.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "label", "pattern"],
+          "properties": {
+            "name": { "$ref": "#/$defs/identifier" },
+            "label": { "$ref": "#/$defs/text" },
+            "pattern": { "description": "Anchored regular expression the identifier must match.", "type": "string", "pattern": "^\\^.+\\$$" }
           }
         },
         "modes": {
@@ -558,6 +578,10 @@
       "properties": {
         "name": { "description": "A verb and its object.", "$ref": "#/$defs/identifier" },
         "class": { "enum": ["read", "write", "sensitive"] },
+        "act": {
+          "description": "Whether the function commits or destroys (send, trash, archive, move): the host serves it as <connector>_act.<function>. Defaults from class: read false, write and sensitive true; a mere preparation, such as a draft, declares false. Never false on a sensitive function, never true on a read one.",
+          "type": "boolean"
+        },
         "description": { "description": "What the agent reads, in English; at most 1000 characters.", "$ref": "#/$defs/text", "maxLength": 1000 },
         "scopes": {
           "description": "Only in a connector with access levels, where it is required: the scopes this function requires, all of them. It is served at a level when each is a scope of the level or implied by one. class stays: it says what the function does.",

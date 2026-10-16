@@ -5,6 +5,7 @@ export const getSpreadsheet = defineFunction({
   name: "google_sheets.get_spreadsheet",
   connector: "google_sheets",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
   description: "Get the metadata of a spreadsheet: title, locale, time zone, link, and each sheet with its id, title, position and size. No cell values: read them with read_ranges.",
   schema: {
@@ -41,6 +42,7 @@ export const readRanges = defineFunction({
   name: "google_sheets.read_ranges",
   connector: "google_sheets",
   class: "read",
+  act: false,
   scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"],
   description: "Read the values of one or more ranges of a spreadsheet. Each range comes back in valueRanges, as rows of cells; trailing empty rows and cells are left out.",
   schema: {
@@ -92,6 +94,7 @@ export const writeRanges = defineFunction({
   name: "google_sheets.write_ranges",
   connector: "google_sheets",
   class: "write",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   description: "Write values into one or more ranges, replacing what the cells held. USER_ENTERED parses each value as if typed in Google Sheets (numbers, dates, formulas starting with =); RAW stores it as given.",
   schema: {
@@ -150,6 +153,7 @@ export const appendRows = defineFunction({
   name: "google_sheets.append_rows",
   connector: "google_sheets",
   class: "write",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   description: "Append rows after the last row of a table, inserting new rows. Give only the first column of the table, e.g. Sheet1!A:A: Google appends after the table it finds in the range, starting at that table's first column, so a wider range can send the rows to another column.",
   schema: {
@@ -202,6 +206,7 @@ export const clearRanges = defineFunction({
   name: "google_sheets.clear_ranges",
   connector: "google_sheets",
   class: "sensitive",
+  act: true,
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   description: "Clear the values of one or more ranges; formatting stays. The version history of the spreadsheet keeps what was there.",
   schema: {
