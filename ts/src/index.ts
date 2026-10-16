@@ -3,38 +3,46 @@ import * as affinity from "./affinity"
 import * as aircall from "./aircall"
 import * as amplitude from "./amplitude"
 import * as claap from "./claap"
+import * as fod from "./fod"
 import * as klaviyo from "./klaviyo"
 import * as mailpool from "./mailpool"
 import * as metaAds from "./meta_ads"
 import * as microsoft from "./microsoft"
+import * as microsoftApp from "./microsoft_app"
 import * as modjo from "./modjo"
 import * as nextmotion from "./nextmotion"
 import * as notion from "./notion"
+import * as pappers from "./pappers"
 import * as pennylane from "./pennylane"
 import * as pennylaneFirm from "./pennylane_firm"
 import * as sellsy from "./sellsy"
 import * as sivan from "./sivan"
 import * as typeform from "./typeform"
 import * as wttjAts from "./wttj_ats"
+import * as yousign from "./yousign"
 import type { Connector } from "./types"
 
 export { affinity }
 export { aircall }
 export { amplitude }
 export { claap }
+export { fod }
 export { klaviyo }
 export { mailpool }
 export { metaAds }
 export { microsoft }
+export { microsoftApp }
 export { modjo }
 export { nextmotion }
 export { notion }
+export { pappers }
 export { pennylane }
 export { pennylaneFirm }
 export { sellsy }
 export { sivan }
 export { typeform }
 export { wttjAts }
+export { yousign }
 export type * from "./types"
 
 /** Every generated connector, in name order; each module keeps its precise types. */
@@ -43,17 +51,21 @@ export const connectors: readonly Connector[] = [
   aircall.connector,
   amplitude.connector,
   claap.connector,
+  fod.connector,
   klaviyo.connector,
   mailpool.connector,
   metaAds.connector,
   microsoft.connector,
+  microsoftApp.connector,
   modjo.connector,
   nextmotion.connector,
   notion.connector,
+  pappers.connector,
   pennylane.connector,
   pennylaneFirm.connector,
   sellsy.connector,
   sivan.connector,
   typeform.connector,
   wttjAts.connector,
+  yousign.connector,
 ]
