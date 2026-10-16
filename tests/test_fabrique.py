@@ -410,3 +410,67 @@ def test_connector_without_levels_is_unchanged(path):
     assert "accessLevels" not in module.source and "scopeImplies" not in module.source
     assert "\n  scopes: " not in module.source
     assert module.source == (OUTPUT / f"{module.connector}.ts").read_text(encoding="utf-8")
+
+
+# --- Identité lue à une adresse complète (règles 5 et 7) ----------------------------
+
+SHEETS = CONNECTORS / "google_sheets" / "connector.yaml"
+USERINFO = "https://openid.example/userinfo"
+OPENID = ["openid", "email"]
+
+
+def _url_identity(d, levels=True):
+    if levels:
+        _levels(d)
+        for level in d["connector"]["auth"]["access_levels"].values():
+            level["scopes"] += OPENID
+    else:
+        _consent(d, scopes=[READ, *OPENID])
+    d["connector"]["auth"]["identity"] = {"url": USERINFO, "path": "email", "scopes": list(OPENID)}
+
+
+@pytest.mark.parametrize("levels", [True, False], ids=["with_levels", "without_levels"])
+def test_url_identity_passes_and_is_carried_as_is(levels):
+    description = _load(SELLSY)
+    _url_identity(description, levels)
+    source = connector_module(check(description, SELLSY)).source
+    assert '"identity": {"url": "https://openid.example/userinfo", "path": "email", "scopes": ["openid", "email"]}' in source
+
+
+@pytest.mark.parametrize("levels, mutate, message", [
+    (True, lambda d: d["connector"]["auth"]["access_levels"]["read"]["scopes"].remove("email"),
+     "auth.identity 'https://openid.example/userinfo' is not served at access level 'read': its scopes (openid, email) are not all covered"),
+    (True, lambda d: d["connector"]["auth"]["identity"].update(scopes=["openid", "profile"]),
+     "auth.identity 'https://openid.example/userinfo' is not served at access level 'read'"),
+    (False, lambda d: d["connector"]["auth"].update(scopes=[READ, "openid"]),
+     "auth.identity needs email, which auth.scopes does not ask for"),
+    (False, lambda d: d["connector"]["auth"].pop("scopes"),
+     "auth.identity needs email, openid, which auth.scopes does not ask for"),
+], ids=["level_without_identity_scope", "identity_scope_in_no_level", "scopes_without_identity_scope", "no_scopes"])
+def test_url_identity_rules_refuse(levels, mutate, message):
+    description = _load(SELLSY)
+    _url_identity(description, levels)
+    mutate(description)
+    with pytest.raises(DescriptionError, match=re.escape(message)):
+        check(description, SELLSY)
+
+
+def test_sheets_identity_is_read_at_an_address_and_levels_split_reads():
+    description = check(_load(SHEETS), SHEETS)
+    auth = description.data["connector"]["auth"]
+    assert auth["identity"] == {"url": "https://openidconnect.googleapis.com/v1/userinfo", "path": "email", "scopes": OPENID}
+    levels, implies = auth["access_levels"], auth["scope_implies"]
+    functions = description.data["functions"]
+    assert {f["name"] for f in functions if served(f, levels["read"]["scopes"], implies)} == {
+        f["name"] for f in functions if f["class"] == "read"}
+    assert all(served(f, levels["full"]["scopes"], implies) for f in functions)
+
+
+def test_microsoft_levels_serve_every_function_at_read():
+    """Les treize fonctions de `microsoft` sont des lectures : le niveau `read` les sert toutes, avec les droits *.Read.All."""
+    description = check(_load(MICROSOFT), MICROSOFT)
+    auth = description.data["connector"]["auth"]
+    assert "scopes" not in auth
+    read = auth["access_levels"]["read"]["scopes"]
+    assert not any("ReadWrite" in scope for scope in read)
+    assert all(served(f, read, auth["scope_implies"]) for f in description.data["functions"])

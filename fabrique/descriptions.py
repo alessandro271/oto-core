@@ -19,8 +19,11 @@ pas dire :
    en en-tête ;
 4. chaque contrôle (`checks`, `expect`) nomme un refus de sa fonction ; `equal_sums`
    porte sur un argument liste dont les éléments déclarent les deux champs ;
-5. la sonde, et l'identité d'un `oauth2_user`, nomment une fonction de lecture du
-   connecteur, appelée par `call`, sans argument requis ;
+5. la sonde, et l'identité d'un `oauth2_user` lue par une fonction, nomment une
+   fonction de lecture du connecteur, appelée par `call`, sans argument requis ;
+   l'identité lue à une adresse complète exige des droits que le consentement
+   demande (ses `scopes`, quand le connecteur n'a pas de niveaux ; à chaque niveau
+   sinon, règle 7) ;
 6. les réglages : un nom n'est déclaré qu'une fois parmi `credential`, `settings` et
    `from_token` ; le défaut d'une liste fermée en est une valeur ; un gabarit d'adresse
    (`base_url`, `token_url`, `authorize_url`) ne cite que des réglages déclarés (et,
@@ -239,9 +242,14 @@ def check_probe(data: dict, where: str) -> None:
     probe = data["connector"].get("probe")
     if probe is not None:
         _plain_read(data, "probe", probe["function"], where)
-    identity = data["connector"]["auth"].get("identity")
-    if identity is not None:
+    auth = data["connector"]["auth"]
+    identity = auth.get("identity")
+    if identity is not None and "function" in identity:
         _plain_read(data, "auth.identity", identity["function"], where)
+    if identity is not None and "url" in identity and "access_levels" not in auth:
+        beyond = sorted(set(identity["scopes"]) - set(auth.get("scopes", [])))
+        if beyond:
+            raise DescriptionError(f"{where}: auth.identity needs {', '.join(beyond)}, which auth.scopes does not ask for")
 
 
 def _check_template(template: str, at: str, settings: dict[str, dict], from_token: set[str], where: str) -> set[str]:
@@ -310,7 +318,8 @@ def covered(scopes: list[str], implies: dict[str, list[str]]) -> set[str]:
 
 
 def served(function: dict, scopes: list[str], implies: dict[str, list[str]]) -> bool:
-    """Une fonction est servie à un niveau quand chacun des droits qu'elle exige est couvert par ceux du niveau."""
+    """Une fonction (ou une identité lue à une adresse) est servie à un niveau quand chacun des droits qu'elle exige
+    est couvert par ceux du niveau."""
     return set(function["scopes"]) <= covered(scopes, implies)
 
 
@@ -344,16 +353,21 @@ def check_access_levels(data: dict, where: str) -> None:
             raise DescriptionError(
                 f"{where}: function {function['name']}: scope(s) {', '.join(beyond)} not covered by level 'full'"
             )
-    roles = [("auth.identity", auth["identity"]["function"])]
+    identity = auth["identity"]
+    roles = []
+    if "function" in identity:
+        roles.append(("auth.identity", identity["function"], next(f for f in data["functions"] if f["name"] == identity["function"])))
+    else:
+        roles.append(("auth.identity", identity["url"], identity))
     if "probe" in data["connector"]:
-        roles.append(("probe", data["connector"]["probe"]["function"]))
-    for role, name in roles:
-        function = next(f for f in data["functions"] if f["name"] == name)
+        name = data["connector"]["probe"]["function"]
+        roles.append(("probe", name, next(f for f in data["functions"] if f["name"] == name)))
+    for role, name, required in roles:
         for level_name, level in levels.items():
-            if not served(function, level["scopes"], implies):
+            if not served(required, level["scopes"], implies):
                 raise DescriptionError(
                     f"{where}: {role} {name!r} is not served at access level {level_name!r}: "
-                    f"its scopes ({', '.join(function['scopes'])}) are not all covered"
+                    f"its scopes ({', '.join(required['scopes'])}) are not all covered"
                 )
 
 

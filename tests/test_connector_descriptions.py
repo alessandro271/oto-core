@@ -369,3 +369,69 @@ def test_invalid_access_levels_are_rejected(mutate):
     mutate(description)
     with pytest.raises(ValidationError):
         _validate(description)
+
+
+# --- Identité lue à une adresse complète --------------------------------------------
+
+USERINFO = "https://openid.example/userinfo"
+
+
+def _with_url_identity(d):
+    """Sellsy à niveaux, l'identité lue sur un service d'identité commun, dont chaque niveau demande les droits."""
+    _with_levels(d)
+    auth = d["connector"]["auth"]
+    auth["identity"] = {"url": USERINFO, "path": "email", "scopes": ["openid", "email"]}
+    for level in auth["access_levels"].values():
+        level["scopes"] += ["openid", "email"]
+
+
+def test_url_identity_base_is_valid():
+    description = _sellsy()
+    _with_url_identity(description)
+    _validate(description)
+
+
+def _url_identity_without_scopes(d):
+    _with_url_identity(d)
+    del d["connector"]["auth"]["identity"]["scopes"]
+
+
+def _url_identity_with_empty_scopes(d):
+    _with_url_identity(d)
+    d["connector"]["auth"]["identity"]["scopes"] = []
+
+
+def _url_identity_with_a_function(d):
+    _with_url_identity(d)
+    d["connector"]["auth"]["identity"]["function"] = "list_estimates"
+
+
+def _url_identity_not_https(d):
+    _with_url_identity(d)
+    d["connector"]["auth"]["identity"]["url"] = "http://openid.example/userinfo"
+
+
+def _url_identity_with_a_query(d):
+    _with_url_identity(d)
+    d["connector"]["auth"]["identity"]["url"] = USERINFO + "?fields=email"
+
+
+def _url_identity_with_a_template(d):
+    _with_url_identity(d)
+    d["connector"]["auth"]["identity"]["url"] = "https://{domain}.example/userinfo"
+
+
+def _url_identity_without_path(d):
+    _with_url_identity(d)
+    del d["connector"]["auth"]["identity"]["path"]
+
+
+@pytest.mark.parametrize("mutate", [
+    _url_identity_without_scopes, _url_identity_with_empty_scopes, _url_identity_with_a_function, _url_identity_not_https,
+    _url_identity_with_a_query, _url_identity_with_a_template, _url_identity_without_path,
+], ids=lambda f: f.__name__.lstrip("_"))
+def test_invalid_url_identity_is_rejected(mutate):
+    description = _sellsy()
+    mutate(description)
+    with pytest.raises(ValidationError):
+        _validate(description)

@@ -7,6 +7,7 @@ import * as fod from "./fod"
 import * as gmail from "./gmail"
 import * as googleCalendar from "./google_calendar"
 import * as googleDrive from "./google_drive"
+import * as googleSheets from "./google_sheets"
 import * as klaviyo from "./klaviyo"
 import * as mailpool from "./mailpool"
 import * as metaAds from "./meta_ads"
@@ -33,6 +34,7 @@ export { fod }
 export { gmail }
 export { googleCalendar }
 export { googleDrive }
+export { googleSheets }
 export { klaviyo }
 export { mailpool }
 export { metaAds }
@@ -61,6 +63,7 @@ export const connectors: readonly Connector[] = [
   gmail.connector,
   googleCalendar.connector,
   googleDrive.connector,
+  googleSheets.connector,
   klaviyo.connector,
   mailpool.connector,
   metaAds.connector,

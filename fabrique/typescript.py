@@ -199,10 +199,10 @@ def _check(check: dict) -> str:
 
 def _auth(connector: str, auth: dict) -> str:
     """Les clés du format en camelCase ; les valeurs telles quelles (noms côté API, adresses, noms des niveaux
-    d'accès et droits), sauf l'identité, qualifiée comme la sonde, et les clés de `exchange`."""
+    d'accès et droits), sauf l'identité lue par une fonction, qualifiée comme la sonde, et les clés de `exchange`."""
     entries = {}
     for key, value in auth.items():
-        if key == "identity":
+        if key == "identity" and "function" in value:
             value = {"function": f"{connector}.{value['function']}", "path": value["path"]}
         elif key == "exchange":
             value = {camel(k): v for k, v in value.items()}

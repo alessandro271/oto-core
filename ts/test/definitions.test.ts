@@ -43,10 +43,15 @@ describe("generated definitions", () => {
   })
 
   const consents = connectors.flatMap((c) => (c.auth.kind === "oauth2_user" ? [[c.name, c, c.auth] as const] : []))
-  it.each(consents)("%s: the identity of a consent is a read function callable with {}, and no credential", (_name, connector, auth) => {
-    const identity = connector.functions.find((fn) => fn.name === auth.identity.function)
-    expect(identity?.class).toBe("read")
-    expect(ajv.validate(identity?.schema as object, {})).toBe(true)
+  it.each(consents)("%s: the identity of a consent is a read function callable with {} or an https address, and no credential", (_name, connector, auth) => {
+    if (auth.identity.url !== undefined) {
+      expect(auth.identity.url).toMatch(/^https:\/\/[^\s{}?#]+$/)
+      expect(auth.identity.scopes.length).toBeGreaterThan(0)
+    } else {
+      const identity = connector.functions.find((fn) => fn.name === auth.identity.function)
+      expect(identity?.class).toBe("read")
+      expect(ajv.validate(identity?.schema as object, {})).toBe(true)
+    }
     expect(connector.credential).toEqual([])
   })
 
@@ -61,11 +66,11 @@ describe("generated definitions", () => {
       expect(fn.scopes?.length, fn.name).toBeGreaterThan(0)
       for (const scope of fn.scopes ?? []) expect(full.has(scope), `${fn.name}: ${scope}`).toBe(true)
     }
-    const who = connector.functions.find((fn) => fn.name === identity.function)
+    const who = identity.url !== undefined ? identity.scopes : connector.functions.find((fn) => fn.name === identity.function)?.scopes
     expect(Object.keys(levels).length).toBeGreaterThan(1)
     for (const [level, { scopes }] of Object.entries(levels)) {
       const granted = covered(scopes, implies)
-      for (const scope of who?.scopes ?? ["(none)"]) expect(granted.has(scope), `${level}: ${scope}`).toBe(true)
+      for (const scope of who ?? ["(none)"]) expect(granted.has(scope), `${level}: ${scope}`).toBe(true)
     }
   })
 

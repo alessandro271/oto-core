@@ -440,14 +440,28 @@
             },
             "expires_in_default": { "description": "Lifetime in seconds of an access token whose response gives none.", "type": "integer", "minimum": 1 },
             "identity": {
-              "description": "Who consented, read right after the consent to name the account: a read function without required argument, and the dotted path of a non-empty value in its response.",
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["function", "path"],
-              "properties": {
-                "function": { "$ref": "#/$defs/identifier" },
-                "path": { "$ref": "#/$defs/text" }
-              }
+              "description": "Who consented, read right after the consent to name the account, and the dotted path of a non-empty value in the response. Either a read function of the connector without required argument, or a full address read with GET outside base_url (a provider's common identity service), with the scopes it requires, which the consent asks for at every level.",
+              "oneOf": [
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["function", "path"],
+                  "properties": {
+                    "function": { "$ref": "#/$defs/identifier" },
+                    "path": { "$ref": "#/$defs/text" }
+                  }
+                },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["url", "path", "scopes"],
+                  "properties": {
+                    "url": { "description": "Fixed https address, called with the access token and no argument.", "type": "string", "pattern": "^https://[^\\s{}?#]*[^/\\s{}?#]$" },
+                    "path": { "$ref": "#/$defs/text" },
+                    "scopes": { "description": "Scopes this address requires, all of them.", "$ref": "#/$defs/scope_list" }
+                  }
+                }
+              ]
             },
             "from_token": {
               "description": "Fields of the token response kept with the account, not secret, renewed at each token response, and citable in base_url like a setting.",

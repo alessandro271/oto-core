@@ -94,10 +94,15 @@ export type OAuthUser = {
   /** Durée de vie, en secondes, d'un jeton d'accès dont la réponse n'en donne pas. */
   readonly expiresInDefault?: number
   /**
-   * Qui a consenti, lu juste après le consentement pour nommer le compte : `function` (nom qualifié, une lecture sans
-   * argument requis), appelée avec `{}`, et le chemin pointé d'une valeur non vide de sa réponse (l'adresse de la personne).
+   * Qui a consenti, lu juste après le consentement pour nommer le compte, et le chemin pointé d'une valeur non vide de
+   * la réponse (l'adresse de la personne). Soit `function` (nom qualifié, une lecture sans argument requis), appelée avec
+   * `{}` ; soit `url`, une adresse complète hors de `baseUrl` (le service d'identité commun d'un fournisseur), lue en
+   * `GET` avec le jeton d'accès et sans argument, et `scopes`, les droits qu'elle exige, que le consentement demande à
+   * chaque niveau.
    */
-  readonly identity: { readonly function: string; readonly path: string }
+  readonly identity:
+    | { readonly function: string; readonly path: string; readonly url?: never; readonly scopes?: never }
+    | { readonly url: string; readonly path: string; readonly scopes: readonly string[]; readonly function?: never }
   /**
    * Champs de la réponse de jeton gardés avec le compte, non secrets, renouvelés à chaque réponse de jeton, cités par
    * `baseUrl` comme un réglage (une `instance_url` qui devient l'adresse de l'API).
