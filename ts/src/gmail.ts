@@ -479,6 +479,38 @@ export const deleteDraft = defineFunction({
   confirm: { summary: "Delete draft {draft_id} for good." },
 })
 
+export const sendDraft = defineFunction({
+  name: "gmail.send_draft",
+  connector: "gmail",
+  class: "sensitive",
+  scopes: ["https://www.googleapis.com/auth/gmail.modify"],
+  description: "Send an existing draft as it stands, to the recipients written in it. The draft leaves the drafts list and the message lands in SENT. Read it with get_draft first to check its recipients and content. Returns the sent message id and its thread id.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["draft_id"],
+    "properties": {
+      "draft_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$", "description": "Draft id, from list_drafts."}
+    }
+  },
+  examples: [
+    { title: "Send one draft", input: {"draft_id": "r-1234567890123456789"} },
+  ],
+  refusals: [
+    { code: "draft_not_found", when: 404, message: "No draft with this id in this mailbox." },
+  ],
+  request: {
+    method: "POST",
+    path: "/users/me/drafts/send",
+    pathParams: [],
+    query: {},
+    body: {"id": "draft_id"},
+    headers: {},
+  },
+  cost: { per: "request" },
+  confirm: { summary: "Send draft {draft_id} to its recipients." },
+})
+
 export const connector = defineConnector({
   name: "gmail",
   label: "Gmail",
@@ -529,5 +561,6 @@ export const connector = defineConnector({
     trashMessage,
     untrashMessage,
     deleteDraft,
+    sendDraft,
   ],
 })
