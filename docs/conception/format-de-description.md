@@ -71,6 +71,18 @@ Un réglage n'est cité que par une adresse. `base_url`, `token_url` et `authori
 
 En `oauth2_user`, `credential` est interdit : les jetons du consentement ne sont pas des champs, et `client_id`/`client_secret` appartiennent à l'application OAuth (celle de l'hôte par défaut, celle de l'organisation si elle en pose une), pas au compte ni au fichier.
 
+**Compte de l'hôte et compte rattaché (décidé le 16/10, pas encore écrit).** Un champ de `credential` porte `holder` : `account` (par défaut : saisi avec le compte) ou `host` (fourni par l'application hôte, une fois pour toutes ses organisations ; jamais stocké avec le compte, montré ni saisissable). Un compte rattaché chez un tiers qui héberge les comptes de ses utilisateurs (une messagerie hébergée : LinkedIn, WhatsApp…) déclare `account_identity` : `{ name: account_id, label: LinkedIn account, pattern: "^[A-Za-z0-9_-]{1,64}$" }`, l'identifiant du compte chez le tiers, une valeur par compte. Il ne se cite que dans `base_url` (`https://api.unipile.com/v2/{account_id}`) ; aucun argument, paramètre de chemin, de requête ou de corps, ni aucune constante ne porte son nom, et la fabrique le refuse : l'agent ne le fournit jamais, il vient du compte que la règle de partage de l'hôte a désigné. L'hôte assemble à l'appel son secret, les champs du compte et l'identité ; il écrit l'identité par un seul service qui la vérifie auprès du tiers, jamais par une saisie (la clé de l'hôte atteint tous les comptes de son abonnement).
+
+```yaml
+connector:
+  name: linkedin_unipile
+  base_url: https://api.unipile.com/v2/{account_id}
+  auth: { kind: api_key, in: header, name: X-API-KEY, key: api_key }
+  credential:
+    - { name: api_key, label: Unipile API key, secret: true, holder: host }
+  account_identity: { name: account_id, label: LinkedIn account, pattern: "^[A-Za-z0-9_-]{1,64}$" }
+```
+
 ### Le bloc `functions`
 
 | Champ | Obligatoire | Sens |
@@ -91,9 +103,16 @@ En `oauth2_user`, `credential` est interdit : les jetons du consentement ne sont
 | `cost` | non | Unité décomptée : `per: request` ou `per: page`. |
 | `confirm` | si `sensitive` | `summary`, gabarit du résumé montré avant exécution (`Validate invoice {id}: irreversible.`). |
 
+Décidé le 16/10, pas encore écrit :
+- **Délai par fonction** : un `timeout_s` propre à une fonction, en plus de celui du connecteur, pour une fonction lente (une réponse d'IA synchrone de plusieurs minutes).
+- **Fichiers** : un type `file` en entrée et en sortie, et le corps multipart. Le pointeur est toujours un fichier de l'hôte, effacé après le transfert ; une destination ne reçoit qu'un identifiant de fichier de l'hôte.
+- **Signal de refus du service** : la description dit comment le service signale une clé refusée ou des crédits épuisés (statut, ou condition sur le corps quand l'amont répond 200 ou 400), pour que l'hôte marque le compte et lève la marque au premier succès.
+
 ### Le bloc `exposure`
 
 L'exposition est une projection, pas une propriété de la fonction. `mode` vaut `per_action` (un outil `<namespace>_<name>` par fonction), `per_connector` (un outil par connecteur, l'action en paramètre) ou `via_call` (rien n'est exposé, le verbe d'appel lit le registre). Le défaut est `per_connector`, fixé par le consommateur ; `mode` le surcharge pour un connecteur, `tool` nomme l'outil unique en `per_connector`.
+
+`exposure` et `modes` ne servent qu'à oto 1 : un hôte d'oto 2 sert ses fonctions par des outils fixes et dit qui fournit le compte par son propriétaire. Les deux blocs restent, marqués « oto 1 seulement », et partent quand oto 1 ne lira plus ce dépôt (décidé le 16/10).
 
 ### Le premier fichier : Sellsy
 
@@ -145,6 +164,8 @@ Six clients n'ont pas de fichier, aucune de leurs fonctions n'étant descriptibl
 
 `tests/test_connector_descriptions.py` vérifie que le schéma est un JSON Schema valide, que chaque description le respecte et porte le nom de son dossier, et que chaque exemple respecte l'entrée de sa fonction. Quarante et une variantes invalides du fichier Sellsy doivent être refusées : classe absente, clé inconnue, `call` et `handwritten` ensemble ou aucun des deux, fonction sensible sans `confirm`, entrée non stricte, aucun exemple, exemple hors bornes ou à argument inconnu, `embed` non documenté, `token_url` absent, `credential` absent, `quota` sans `platform`, version hors semver, `exposure.mode` inconnu, schéma de sortie ouvert ou sans propriétés, `rate_limit` incomplet, en-tête constant non textuel, encodage inconnu, contrôle d'un genre inconnu, attente sans chemin, sonde à clé inconnue, `more` vide ; et pour le compte : `client_auth` absent, `token_url` et `token_urls` ensemble, `base_url` et `base_urls` ensemble, liste fermée d'une valeur, `text` sans motif ou à motif non ancré, `url` à liste, gabarit à `/` final, clé en query préfixée, clé sans place, `oauth2_user` avec un credential, avec `client_id`, sans identité, `rotates` hors `refresh_token`, `exchange` sans sa demande, paramètre d'autorisation réservé à l'hôte, PKCE inconnu ; pour l'identité à une adresse, sept de plus : sans droits ou à liste vide, avec aussi une fonction, hors `https`, avec une query, en gabarit, sans chemin ; et pour les niveaux d'accès, treize de plus : niveaux et `scopes` ensemble, sans `full`, `full` seul, niveau sans droits ou à liste vide, à clé inconnue ou à nom invalide, `scope_implies` sans niveaux ou à liste vide, niveaux hors `oauth2_user`, `scopes` d'une fonction sans niveaux, fonction sans `scopes` ou à liste vide dans un connecteur à niveaux. Les règles hors schéma sont vérifiées par la fabrique ([fabrique](fabrique.md)). `jsonschema` est un outil de test, pas une dépendance de la lib.
 
+Deux gardes de CI, décidées le 16/10, pas encore écrites : la version d'un connecteur (`connector.version`) monte quand son code change, pas seulement sa description, sauf dispense explicite pour un changement sans importance, par une ligne du message de commit que la CI lit ; et un client sans description est refusé, sauf exception nommée et motivée.
+
 ## Décisions et alternatives écartées
 
 - **Du code source dans l'un des deux langages** : écarté le 29/09. L'autre langage n'en serait qu'une traduction ; un fichier déclaratif se lit des deux côtés.
@@ -185,10 +206,8 @@ Six clients n'ont pas de fichier, aucune de leurs fonctions n'étant descriptibl
 ## Questions ouvertes
 
 - La forme de `quota`.
-- Le vocabulaire de `modes` : organisation, équipe et personne, ou le retirer du fichier, puisque le compte relève de l'hôte ?
 - YAML 1.2 déclaré, lecteur 1.1 : changer de lecteur, ou se limiter au sous-ensemble commun et le dire ?
 - Référencer la spec OpenAPI de l'éditeur quand elle existe ?
-- Le défaut `per_connector` vaut-il pour un hôte d'oto 2, dont les fonctions ne passent que par `call` ?
 - Ce que le format ne sait pas encore dire, relevé en décrivant dix connecteurs le 2026-10-05 :
   - un corps qui est un tableau (`affinity`, `nextmotion`, `microsoft`), un corps en formulaire (`meta_ads`) ;
   - une réponse autre que JSON (CSV, fichier binaire), une pagination par adresse complète (`@odata.nextLink`) ;
@@ -199,7 +218,6 @@ Six clients n'ont pas de fichier, aucune de leurs fonctions n'étant descriptibl
   - en `oauth2_client_credentials`, l'authentification du client par certificat (assertion signée) plutôt que par secret, que Microsoft recommande en production (`microsoft_app`) ;
 - Relevés depuis le 2026-10-06 — `pennylane` : des clauses de filtre bâties depuis des arguments nommés (bornes de date, statut, `external_reference`), plutôt qu'une liste de clauses écrite par l'agent ; `pennylane_firm` : un corps multipart ; une pagination par numéro de page dont la réponse dit la page courante et le nombre de pages, pas la suivante (`current_page`, `total_pages`) ; un argument qui ne part plus une fois le curseur posé (`start_date` du journal des changements) ; le 2026-10-08 : un réglage cité ailleurs que dans une adresse (en-tête qui choisit la société) ; l'identité lue dans la réponse de jeton plutôt que par une fonction ; un paramètre d'application autre que le client (`config_id`) ; des scopes séparés par des virgules ; `klaviyo` : une pagination par adresse complète gardée à l'hôte du tiers (`links.next`), un rythme par fonction en plusieurs fenêtres (seconde, minute, jour) et qui dépend d'un argument, un corps imbriqué (enveloppe JSON:API) ; `typeform` : les scopes d'une fonction, qui ne vivent que dans sa description, `output.strip` sur un objet unique, un argument liste dans `confirm.summary` ; le 2026-10-12, `modjo` : un délai propre à une fonction (une réponse d'IA synchrone jusqu'à cinq minutes), et de nouveau une pagination par numéro de page dont la réponse dit le total, pas la page suivante.
 - Relevés le 2026-10-16, Google : une erreur que seul le corps distingue (un 403 Google est un droit manquant ou une limite de débit, rejouable dans le second cas seulement) ; un connecteur par service Google ou un seul connecteur `google`, un consentement pour tous les services.
-- Un test doit-il refuser un client sans description, avec une liste nommée d'exceptions ?
 
 ## Historique
 
@@ -224,3 +242,4 @@ Six clients n'ont pas de fichier, aucune de leurs fonctions n'étant descriptibl
 - 2026-10-16 : descriptions `pappers` (4 lectures), `yousign` (demandes de signature depuis un modèle, 7 fonctions) et `microsoft_app` (courrier d'une boîte en accès d'application, un compte par boîte, 6 fonctions), corrigées après relecture — choix du projet (source : demande du mainteneur).
 - 2026-10-16 : `scopes` d'une fonction et niveaux d'accès en `oauth2_user` ([niveaux d'accès](niveaux-d-acces.md)) ; descriptions `gmail` (12 fonctions), `google_drive` (12) et `google_calendar` (7), à niveaux `read` et `full` ; Sheets reste sans fichier, faute d'identité sur son hôte — décidé par le mainteneur.
 - 2026-10-16 : l'identité d'un `oauth2_user` peut se lire à une adresse complète (`identity: { url, path, scopes }`), ses droits demandés à chaque niveau ; description `google_sheets` (5 fonctions, valeurs seulement), identité par userinfo OpenID ; `microsoft` 3.1.0 à niveaux `read` et `full`, droits déclarés par fonction — décidé par le mainteneur.
+- 2026-10-16 : champ fourni par l'hôte (`holder: host`) et identité d'un compte rattaché (`account_identity`), pour les messageries hébergées ; délai par fonction ; type `file` et corps multipart ; signal de refus et d'épuisement décrit ; `modes` et `exposure` marqués « oto 1 seulement » ; gardes de CI sur la version et sur la description d'un client — décidé par le mainteneur (source : revue des connecteurs d'oto 2 du 16/10 ; issues #133, #134, #102, oto-now/oto-core#67).
