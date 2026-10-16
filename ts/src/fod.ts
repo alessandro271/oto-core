@@ -560,7 +560,7 @@ export const urbanGetZoning = defineFunction({
   name: "fod.urban_get_zoning",
   connector: "fod",
   class: "read",
-  description: "Get the town-planning zoning that applies at a point, from the national town-planning portal (GPU): {zone: {libelle, libelle_long, type_zone, idurba, reglement_url}, zones_superposees, prescriptions, informations, servitudes_utilite_publique, document, documents_couvrants, avertissements}. Use it for the planning information of a property: zone of the local plan (PLU, PLUi), easements of public interest, pre-emption perimeters. zone and document are null when the commune has no digitised plan (national planning rules apply, or the plan is not published).",
+  description: "Get the town-planning zoning that applies at a point, from the national town-planning portal (GPU): {zone: {libelle, libelle_long, type_zone, idurba, reglement_url}, zones_superposees, prescriptions, informations, servitudes_utilite_publique, document, documents_couvrants, avertissements}. Use it for the planning information of a property: zone of the local plan (PLU, PLUi), easements of public interest, pre-emption perimeters. zone.idurba and zone.libelle lead to the written regulation of the zone. zone and document are null when the commune has no digitised plan (national planning rules apply, or the plan is not published).",
   schema: {
     "type": "object",
     "additionalProperties": false,
@@ -579,6 +579,133 @@ export const urbanGetZoning = defineFunction({
     path: "/api/urba/gpu/zonage",
     pathParams: [],
     query: {"lon": "lon", "lat": "lat"},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const urbanGetZoningRegulation = defineFunction({
+  name: "fod.urban_get_zoning_regulation",
+  connector: "fod",
+  class: "read",
+  description: "Read the written regulation (règlement écrit) of a local plan (PLU, PLUi, PSMV): height, footprint, setbacks, prohibited uses, parking. idurba and zone come from the zoning at the point (zone.idurba, zone.libelle, case kept). With zone alone, the zone's chapter in extraits[0], cut at max_chars (tronque); a sector without its own chapter (UAa) gets its parent zone's (section.zone_chapitre UA). With query too, the passages of that chapter holding it, case and accents ignored, in French (hauteur, emprise au sol, recul). With query alone, passages of the whole document, general provisions included. Returns {idurba, cached, titre, section, nb_occurrences, extraits, note}; section is null when no chapter of the zone is found. Quote the raw extracts, never a figure they do not hold: rules drawn on a graphic document are not in the text. cached false comes with a statut: start the ingestion, then read its state until pret. scanne_probable true means a scanned PDF, unreadable without OCR.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["idurba"],
+    "anyOf": [{"required": ["zone"]}, {"required": ["query"]}],
+    "properties": {
+      "idurba": {
+        "type": "string",
+        "pattern": "^[0-9A-Za-z]{5,9}_(PLU|PLUI|PLUi|POS|CC|PSMV)_[0-9]{8}(_[0-9A-Za-z]{1,5})?$",
+        "description": "Identifier of the planning document, as zone.idurba of the zoning: 80021_PLU_20251211."
+      },
+      "zone": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 30,
+        "description": "Zone code as zone.libelle of the zoning, case kept: UA, UCe1b, 1AUb."
+      },
+      "query": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 100,
+        "description": "Words to find in the French text: hauteur, emprise au sol, recul."
+      },
+      "max_extraits": {"type": "integer", "minimum": 1, "maximum": 50, "default": 8, "description": "Most passages returned."},
+      "context_lignes": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 200,
+        "default": 30,
+        "description": "Lines kept after each match in a passage."
+      },
+      "max_chars": {
+        "type": "integer",
+        "minimum": 1000,
+        "maximum": 200000,
+        "default": 40000,
+        "description": "Cut the zone's chapter at this length (zone without query)."
+      }
+    }
+  },
+  examples: [
+    { title: "Chapter of sector UAa, Amiens local plan", input: {"idurba": "80021_PLU_20251211", "zone": "UAa"} },
+    { title: "Height rules of zone UCe1b, Lyon metropolitan plan", input: {"idurba": "200046977_PLUI_20260326", "zone": "UCe1b", "query": "hauteur", "max_extraits": 5} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/api/reglement",
+    pathParams: [],
+    query: {"idurba": "idurba", "zone": "zone", "query": "query", "max_extraits": "max_extraits", "context_lignes": "context_lignes", "max_chars": "max_chars"},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const urbanStartRegulationIngestion = defineFunction({
+  name: "fod.urban_start_regulation_ingestion",
+  connector: "fod",
+  class: "write",
+  description: "Ask FOD to fetch and index the written regulation of a local plan it does not hold yet, from the national town-planning portal (GPU). The work runs in the background, from 20 seconds to a few minutes; the answer comes at once with the state {idurba, statut, message, ...}: en_cours (started, or already running), pret or scanne (already held, nothing restarted), echec (a recent failure, erreur gives the cause; no new attempt before relance_possible_apres). Calling it again never starts a second ingestion. Then read the ingestion state every 20 to 30 seconds until pret, scanne or echec. FOD ingests one regulation at a time: a busy answer asks to retry in a minute. A document replaced on the portal is not swapped for its successor; the refusal names the documents published for the same territory.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["idurba"],
+    "properties": {
+      "idurba": {
+        "type": "string",
+        "pattern": "^[0-9A-Za-z]{5,9}_(PLU|PLUI|PLUi|POS|CC|PSMV)_[0-9]{8}(_[0-9A-Za-z]{1,5})?$",
+        "description": "Identifier of the planning document, as zone.idurba of the zoning: 80021_PLU_20251211."
+      }
+    }
+  },
+  examples: [
+    { title: "Regulation of the Amiens local plan", input: {"idurba": "80021_PLU_20251211"} },
+  ],
+  refusals: [
+    { code: "regulation_not_published", when: 404, message: "The national town-planning portal does not publish this document or its written regulation (a municipal map, carte communale, has none); autres_documents names the documents published for the same territory." },
+  ],
+  request: {
+    method: "POST",
+    path: "/api/reglements/{idurba}/ingestion",
+    pathParams: ["idurba"],
+    query: {},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const urbanGetRegulationIngestion = defineFunction({
+  name: "fod.urban_get_regulation_ingestion",
+  connector: "fod",
+  class: "read",
+  description: "Read the state of the ingestion of a local plan's written regulation in FOD: {idurba, statut, message, ...}. statut is absent (never asked), en_cours (with depuis), pret (readable; titre, doc_type, text_chars, and sources, the PDF addresses on the portal), scanne (a scanned PDF, unreadable without OCR: say so and give the source) or echec (erreur gives the cause, relance_possible_apres when a new attempt is allowed).",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["idurba"],
+    "properties": {
+      "idurba": {
+        "type": "string",
+        "pattern": "^[0-9A-Za-z]{5,9}_(PLU|PLUI|PLUi|POS|CC|PSMV)_[0-9]{8}(_[0-9A-Za-z]{1,5})?$",
+        "description": "Identifier of the planning document, as zone.idurba of the zoning: 80021_PLU_20251211."
+      }
+    }
+  },
+  examples: [
+    { title: "State of the Lyon metropolitan plan's regulation", input: {"idurba": "200046977_PLUI_20260326"} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/api/reglements/{idurba}/ingestion",
+    pathParams: ["idurba"],
+    query: {},
     body: {},
     headers: {},
   },
@@ -960,12 +1087,140 @@ export const lawGetDecision = defineFunction({
   cost: { per: "request" },
 })
 
+export const taxSearchBofip = defineFunction({
+  name: "fod.tax_search_bofip",
+  connector: "fod",
+  class: "read",
+  description: "Search the French tax administration's official doctrine (BOFiP-Impôts, DGFiP), commentaries in force only: {total_count, publications: [{identifiant_juridique, titre, serie, type, debut_de_validite, permalien, extrait}], source}. A commentary matches when it holds every word of query: 2 to 5 French keywords (droits de mutation, plus-values, IFI, pacte Dutreil, TVA immobilière); no result means fewer or other words. extrait is 400 characters around the first word found; total_count counts every match, beyond limit. Use it to find how the administration reads a tax rule, then read the commentary by its identifiant_juridique. Doctrine is the administration's reading of the law, not the law itself.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["query"],
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 120,
+        "description": "2 to 5 French keywords, all required: donation usufruit parts sociales."
+      },
+      "limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 6}
+    }
+  },
+  examples: [
+    { title: "Doctrine on gifts of usufruct", input: {"query": "donation usufruit", "limit": 5} },
+    { title: "Doctrine on the Dutreil pact", input: {"query": "pacte Dutreil transmission"} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/api/doctrine/bofip",
+    pathParams: [],
+    query: {"query": "query", "limit": "limit"},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const taxGetBofipDocument = defineFunction({
+  name: "fod.tax_get_bofip_document",
+  connector: "fod",
+  class: "read",
+  description: "Read one BOFiP-Impôts commentary or news item in force by its reference (identifiant_juridique of a search result): {identifiant_juridique, titre, serie, type, debut_de_validite, permalien, contenu, contenu_chars, tronque, source}. The text is cut at max_chars (tronque true, contenu_chars gives its whole length); permalien is the official page on bofip.impots.gouv.fr. The version suffix of a permalink (-20240319) is accepted and dropped.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["identifiant"],
+    "properties": {
+      "identifiant": {
+        "type": "string",
+        "pattern": "^(BOI|ACTU)-[A-Z0-9-]+$",
+        "description": "BOFiP reference: BOI-ENR-DMTG-20-30-20-20, or ACTU-... for a news item."
+      },
+      "max_chars": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 12000,
+        "description": "Cut the text at this length; 0 returns it whole."
+      }
+    }
+  },
+  examples: [
+    { title: "Allowances on gifts (BOI-ENR-DMTG-20-30-20-20)", input: {"identifiant": "BOI-ENR-DMTG-20-30-20-20", "max_chars": 20000} },
+  ],
+  refusals: [
+    { code: "bofip_document_not_found", when: "the response is null", message: "No BOFiP publication in force with this reference: take it from a doctrine search result." },
+  ],
+  expect: [
+    { kind: "non_empty", refusal: "bofip_document_not_found", path: "identifiant_juridique" },
+  ],
+  request: {
+    method: "GET",
+    path: "/api/doctrine/bofip/{identifiant}",
+    pathParams: ["identifiant"],
+    query: {"max_chars": "max_chars"},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const complianceScreenAssetFreeze = defineFunction({
+  name: "fod.compliance_screen_asset_freeze",
+  connector: "fod",
+  class: "read",
+  description: "Screen a name against the French national register of asset freezes (DG Trésor): persons, entities and ships under a freeze in force in France (UN, EU and national measures). Use it to screen a client, a supplier or a contract party. An entry matches when its name or an alias holds every word of nom, accents, case and punctuation ignored. prenom only orders the matches, never drops one: each carries sur, nom_et_prenom (one of its first names contains prenom) or nom_seul. Returns {publication, inscrits, total, nom_et_prenom, nom_seul, correspondances: [{sur, nature, nom, prenoms, naissance, fondement}], source}; limit bounds the list, never the counts: total above the list length means more matches to read. A match on a common name is not a confirmed freeze: compare first names and date of birth. The name travels in the request body and FOD does not keep it.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["nom"],
+    "properties": {
+      "nom": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 120,
+        "description": "Surname, or name of the legal person: Martin, SCI Les Hortillons."
+      },
+      "prenom": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 120,
+        "description": "First name: puts the entries that carry it first, drops none."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 50,
+        "default": 10,
+        "description": "Most matches listed; the counts stay whole."
+      }
+    }
+  },
+  examples: [
+    { title: "A natural person, surname and first name", input: {"nom": "Martin", "prenom": "Jean"} },
+    { title: "A company party to a sale", input: {"nom": "SCI Les Hortillons", "limit": 20} },
+  ],
+  refusals: [
+    { code: "register_inconclusive", when: 503, message: "The asset-freeze register cannot be relied on right now (not loaded, truncated or out of date). This is not an absence of match: do not conclude that the name is not listed; retry later." },
+    { code: "name_without_letters", when: 400, message: "The name holds no letter or digit: give a surname or the name of a legal person." },
+  ],
+  request: {
+    method: "POST",
+    path: "/api/vigilance/gels-avoirs/controle",
+    pathParams: [],
+    query: {},
+    body: {"nom": "nom", "prenom": "prenom", "limit": "limit"},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
 export const connector = defineConnector({
   name: "fod",
   label: "France Open Data",
   namespace: "fod",
-  version: "1.0.0",
-  apiVersion: "france-opendata-service 1bb04a5 (routes unversioned)",
+  version: "1.2.0",
+  apiVersion: "france-opendata-service 6f69e80 (routes unversioned)",
   baseUrl: "https://data.oto.zone",
   auth: {"kind": "bearer", "token": "api_key"},
   credential: [{"name": "api_key", "label": "FOD API key", "secret": true}],
@@ -996,6 +1251,9 @@ export const connector = defineConnector({
     propertyGetPriceStats,
     propertySearchBuildingPermits,
     urbanGetZoning,
+    urbanGetZoningRegulation,
+    urbanStartRegulationIngestion,
+    urbanGetRegulationIngestion,
     urbanListCommuneRisks,
     urbanGetClayExposure,
     urbanListClassifiedFacilities,
@@ -1006,5 +1264,8 @@ export const connector = defineConnector({
     lawListArticleVersions,
     lawSearchCaseLaw,
     lawGetDecision,
+    taxSearchBofip,
+    taxGetBofipDocument,
+    complianceScreenAssetFreeze,
   ],
 })

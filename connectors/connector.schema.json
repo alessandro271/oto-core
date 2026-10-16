@@ -496,7 +496,7 @@
       "properties": {
         "name": { "description": "A verb and its object.", "$ref": "#/$defs/identifier" },
         "class": { "enum": ["read", "write", "sensitive"] },
-        "description": { "description": "What the agent reads, in English.", "$ref": "#/$defs/text" },
+        "description": { "description": "What the agent reads, in English; at most 1000 characters.", "$ref": "#/$defs/text", "maxLength": 1000 },
         "input": { "$ref": "#/$defs/input_schema" },
         "examples": {
           "description": "Each input is validated against the function input.",
