@@ -299,6 +299,7 @@ def index_source(modules: list[Module]) -> str:
     lines.append("")
     lines += [f"export {{ {m.identifier} }}" for m in modules]
     lines.append('export type * from "./types"')
+    lines.append('export * from "./adapters/index"')
     lines.append("")
     lines.append("/** Every generated connector, in name order; each module keeps its precise types. */")
     lines.append("export const connectors: readonly Connector[] = " + _list([f"{m.identifier}.connector" for m in modules], 0))

@@ -54,6 +54,7 @@ export { typeform }
 export { wttjAts }
 export { yousign }
 export type * from "./types"
+export * from "./adapters/index"
 
 /** Every generated connector, in name order; each module keeps its precise types. */
 export const connectors: readonly Connector[] = [

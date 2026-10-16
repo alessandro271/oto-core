@@ -66,6 +66,7 @@ Une règle violée fait refuser le fichier, et rien n'est généré.
 
 ### Ce qu'elle ne génère pas
 
+- **Un adaptateur de port, propre à un fournisseur, s'écrit à la main dans `ts/src/adapters/` ; tout le reste se génère.** Un port est un contrat que définit le paquet d'oto 2 et qu'un fournisseur remplit autrement qu'une fonction décrite (le lien hébergé par lequel une personne connecte un compte chez un tiers, la liste des comptes, la sonde d'une session) ; la sortie en recopie le type, sans dépendre du paquet. La fabrique n'écrit ni ne nettoie ce dossier : elle ne touche qu'aux fichiers de `ts/src/` qui portent sa marque ; l'index qu'elle génère réexporte `ts/src/adapters/index.ts`. Premier adaptateur : `unipileHostedLinks`, pour le port `hostedLinks` (lien `POST /v2/auth/link`, comptes `GET /v2/accounts` par `offset`, sonde `GET /v2/{id}/users/me`, 401 seul vaut session morte). Comme le code généré, il ne lit aucun secret : l'hôte passe sa clé par une fonction, appelée à chaque requête.
 - Le corps d'une entrée `handwritten`.
 - Le runtime commun, écrit une fois par langage : consentement et renouvellement, cache de jeton (au niveau du processus, indexé par une empreinte du credential, jamais par le secret en clair), rejeu unique sur 401, limiteur de débit partagé.
 - La fusion de plusieurs appels, un refus local que les contrôles déclarés ne disent pas, la construction d'un mail, l'identité opérée.
@@ -126,6 +127,7 @@ Le double ne reste qu'aux connecteurs pas encore basculés, et il s'éteint au p
 - Les 513 fonctions sont générées.
 - Pas de sortie Python, ni de runtime commun, ni de test de contrat entre les deux langages. Le client Python Sellsy reste écrit à la main, sur des verbes génériques.
 - Le paquet d'oto 2 n'adapte pas encore la sortie : son client HTTP ne connaît ni `PUT`, ni la query, ni un autre mode d'authentification que le jeton porteur ; il n'exécute encore ni la validation JSON Schema, ni les constantes, l'encodage, le rythme, la sonde ou les contrôles, ni les réglages, la clé en query, `clientAuth`, le consentement `oauth2_user` et sa rotation, ni l'identité lue à une adresse complète, ni les niveaux d'accès, ni les gardes d'une adresse libre, ni un champ fourni par l'hôte (`holder: "host"`), ni l'identité d'un compte rattaché et le service qui l'écrit, ni les noms `<connecteur>_act` des fonctions `act`.
+- L'adaptateur `unipileHostedLinks` (2026-10-17) a ses tests contre un faux `fetch`, sans appel réel ; le nom du titulaire que rend sa sonde (`first_name` et `last_name` de `users/me`, sinon `name` ou `public_identifier`) n'est lu par aucun code existant d'oto 1, qui nomme un compte par le `name` de la liste des comptes. La garde mécanique sur les secrets (`tests/test_no_secret_read_guard.py`) ne lit que le Python.
 - Les gardes d'une adresse libre ne sont écrites nulle part dans ce dépôt : la sortie les déclare, aucun code ne les exécute.
 - Le backend d'oto 1 n'a pas de lecteur de la description : tous ses outils restent déclarés à la main.
 
@@ -150,3 +152,4 @@ Le double ne reste qu'aux connecteurs pas encore basculés, et il s'éteint au p
 - 2026-10-16 : règles 5 et 7, l'identité d'un consentement lue à une adresse complète, avec ses droits ; la sortie la porte telle quelle, sans qualifier de nom de fonction — décidé par le mainteneur.
 - 2026-10-17 : règle 8, l'identité d'un compte rattaché ; la sortie porte `holder` sur chaque champ du credential et `accountIdentity` ; `base_urls` peut citer l'identité, et rien d'autre — choix du projet (source : décision du mainteneur du 16/10 sur le compte de l'hôte et le compte rattaché).
 - 2026-10-17 : règle 9, `act` suit la classe ; la sortie porte `act` résolu sur chaque fonction, que l'hôte sert sous `<connecteur>_act.<fonction>` quand il est vrai — décidé par le mainteneur.
+- 2026-10-17 : un adaptateur de port, propre à un fournisseur, s'écrit à la main dans `ts/src/adapters/`, réexporté par l'index ; tout le reste se génère ; premier adaptateur, le lien hébergé d'Unipile (`hostedLinks`) — décidé par le mainteneur.
