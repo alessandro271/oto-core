@@ -1,7 +1,7 @@
 # La fabrique
 
 - **Statut** : proposé
-- **Dernière révision** : 2026-10-08
+- **Dernière révision** : 2026-10-16
 
 ## Résumé
 
@@ -36,9 +36,10 @@ Chaque `connectors/<nom>/connector.yaml`, validé contre `connectors/connector.s
 3. un nom côté API reçoit une seule valeur : une constante ne reprend pas le nom d'un argument de la même place, un en-tête n'est posé qu'une fois (authentification, en-têtes du connecteur, de la fonction, à la casse près), une clé en query n'est le nom d'aucun paramètre de query, et `encode` ne nomme qu'un argument placé en query, en corps ou en en-tête ;
 4. un contrôle (`checks`, `expect`) nomme un refus de sa fonction, et `equal_sums` une liste dont les éléments déclarent les deux champs ;
 5. la sonde, et l'identité d'un `oauth2_user`, nomment une fonction de lecture, appelée par `call`, sans argument requis ;
-6. un nom n'est déclaré qu'une fois parmi `credential`, `settings` et `from_token` ; le défaut d'une liste fermée en est une valeur ; un gabarit ne cite que des réglages déclarés (et `base_url`, des valeurs de `from_token`), une adresse libre en tête seulement, un autre réglage après `https://` seulement ; `base_urls` et `token_urls` portent sur une liste fermée et donnent une adresse à chacune de ses valeurs ; tout réglage est cité.
+6. un nom n'est déclaré qu'une fois parmi `credential`, `settings` et `from_token` ; le défaut d'une liste fermée en est une valeur ; un gabarit ne cite que des réglages déclarés (et `base_url`, des valeurs de `from_token`), une adresse libre en tête seulement, un autre réglage après `https://` seulement ; `base_urls` et `token_urls` portent sur une liste fermée et donnent une adresse à chacune de ses valeurs ; tout réglage est cité ;
+7. les [niveaux d'accès](niveaux-d-acces.md) : `scope_implies` est clos (une clé liste aussi ce qu'impliquent les droits qu'elle implique) et chacune de ses clés est un droit d'un niveau ; `full` couvre chaque droit d'un niveau restreint et chaque droit exigé par une fonction ; l'identité d'un consentement et la sonde sont servies à chaque niveau.
 
-Le schéma refuse lui-même un `credential` en `oauth2_user` : les jetons d'un consentement ne sont pas des champs.
+Le schéma refuse lui-même un `credential` en `oauth2_user` : les jetons d'un consentement ne sont pas des champs. Il exige aussi les `scopes` de chaque fonction d'un connecteur à niveaux, et les refuse ailleurs.
 
 Une règle violée fait refuser le fichier, et rien n'est généré.
 
@@ -47,7 +48,7 @@ Une règle violée fait refuser le fichier, et rien n'est généré.
 | Sortie | Contenu |
 |---|---|
 | Python, dans la lib | Une méthode par fonction sur le client du connecteur, au-dessus d'un runtime commun : transport, authentification par `auth.kind`, encodage des listes (`query_arrays`), pagination. |
-| TypeScript, sous `ts/src/` | Un module par connecteur : sa définition (authentification telle que décrite, clés en camelCase, `baseUrl` ou `baseUrls`, champs du credential, réglages, table d'erreurs, délai en millisecondes, exposition, en-têtes constants, rythme maximal, sonde) et une définition par fonction (nom qualifié `<connecteur>.<fonction>`, classe, description, schéma d'entrée en JSON Schema, exemples avec leur titre, refus en table `code`/`when`/`message`, contrôles avant l'appel et sur la réponse, spécification de requête avec constantes et encodages, pagination, sortie, coût, résumé de confirmation) ; un index qui les liste. Le contrat de ces définitions est un module écrit à la main, `ts/src/types.ts`. |
+| TypeScript, sous `ts/src/` | Un module par connecteur : sa définition (authentification telle que décrite, clés en camelCase, `baseUrl` ou `baseUrls`, champs du credential, réglages, table d'erreurs, délai en millisecondes, exposition, en-têtes constants, rythme maximal, sonde) et une définition par fonction (nom qualifié `<connecteur>.<fonction>`, classe, droits exigés dans un connecteur à niveaux, description, schéma d'entrée en JSON Schema, exemples avec leur titre, refus en table `code`/`when`/`message`, contrôles avant l'appel et sur la réponse, spécification de requête avec constantes et encodages, pagination, sortie, coût, résumé de confirmation) ; un index qui les liste. Le contrat de ces définitions est un module écrit à la main, `ts/src/types.ts`. |
 | Les deux | La table des erreurs et les `refusals`, en table ; les tests de contrat. |
 
 - La sortie TypeScript ne dépend ni du paquet d'oto 2 ni d'aucune bibliothèque : pas de cycle. Le paquet l'adapte à son contrat (refus en chaînes, exemples sans titre, codes d'erreur à lui) et l'exécute avec son client HTTP, son coffre et son journal.
@@ -119,10 +120,10 @@ Le double ne reste qu'aux connecteurs pas encore basculés, et il s'éteint au p
 
 ## Écart avec le code
 
-- Écrits : le générateur (`fabrique/`), la sortie TypeScript commitée (`ts/src/`, vingt et un connecteurs) et son contrat (`ts/src/types.ts`), leurs tests (`tests/test_fabrique.py`, `ts/test/`) et le contrôle en CI. Les six règles hors schéma JSON sont vérifiées.
-- Les 413 fonctions sont générées.
+- Écrits : le générateur (`fabrique/`), la sortie TypeScript commitée (`ts/src/`, vingt-quatre connecteurs) et son contrat (`ts/src/types.ts`), leurs tests (`tests/test_fabrique.py`, `ts/test/`) et le contrôle en CI. Les sept règles hors schéma JSON sont vérifiées.
+- Les 497 fonctions sont générées.
 - Pas de sortie Python, ni de runtime commun, ni de test de contrat entre les deux langages. Le client Python Sellsy reste écrit à la main, sur des verbes génériques.
-- Le paquet d'oto 2 n'adapte pas encore la sortie : son client HTTP ne connaît ni `PUT`, ni la query, ni un autre mode d'authentification que le jeton porteur ; il n'exécute encore ni la validation JSON Schema, ni les constantes, l'encodage, le rythme, la sonde ou les contrôles, ni les réglages, la clé en query, `clientAuth`, le consentement `oauth2_user` et sa rotation, ni les gardes d'une adresse libre.
+- Le paquet d'oto 2 n'adapte pas encore la sortie : son client HTTP ne connaît ni `PUT`, ni la query, ni un autre mode d'authentification que le jeton porteur ; il n'exécute encore ni la validation JSON Schema, ni les constantes, l'encodage, le rythme, la sonde ou les contrôles, ni les réglages, la clé en query, `clientAuth`, le consentement `oauth2_user` et sa rotation, ni les niveaux d'accès, ni les gardes d'une adresse libre.
 - Les gardes d'une adresse libre ne sont écrites nulle part dans ce dépôt : la sortie les déclare, aucun code ne les exécute.
 - Le backend d'oto 1 n'a pas de lecteur de la description : tous ses outils restent déclarés à la main.
 
@@ -143,3 +144,4 @@ Le double ne reste qu'aux connecteurs pas encore basculés, et il s'éteint au p
 - 2026-10-06 : plus de `zod` dans la sortie : le JSON Schema d'entrée est transmis tel quel et validé par l'hôte avec un validateur standard ; la fabrique n'exige qu'une racine stricte, et génère les 340 fonctions ; la sortie porte en-têtes constants, constantes, encodage JSON, arrêt de pagination, rythme, sonde et contrôles — décidé par le mainteneur.
 - 2026-10-07 : l'application hôte dépend de la sortie par un commit épinglé et déclare ses connecteurs au paquet d'oto 2, moteur générique sans connecteur ; pas de publication npm pour l'instant — décidé par le mainteneur.
 - 2026-10-08 : la fabrique vérifie les réglages, les gabarits et l'identité d'un consentement, et porte telles quelles dans la sortie l'authentification (`oauth2_user` déclaratif compris) et les réglages ; une clé est admise en query, masquée à l'exécution — décidé par le mainteneur.
+- 2026-10-16 : règle 7, les niveaux d'accès ; la sortie porte `accessLevels`, `scopeImplies` et les droits exigés d'une fonction, et rien de neuf pour un connecteur sans niveaux — décidé par le mainteneur.

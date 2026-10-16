@@ -27,7 +27,14 @@ pas dire :
    pour `base_url`, des valeurs de `from_token`), une adresse libre en tête seulement,
    un autre réglage après `https://` seulement ; `base_urls` et `token_urls` portent
    sur une liste fermée et donnent une adresse à chacune de ses valeurs, et rien
-   d'autre ; tout réglage déclaré est cité.
+   d'autre ; tout réglage déclaré est cité ;
+7. les niveaux d'accès (`auth.access_levels`, voir docs/conception/niveaux-d-acces.md) :
+   `scope_implies` est clos (un droit impliqué qui en implique d'autres les fait
+   impliquer aussi par qui l'implique : lue en un pas ou par transitivité,
+   l'implication dit la même chose) et chacune de ses clés est un droit d'un
+   niveau ; `full` couvre chaque droit d'un niveau restreint et chaque droit exigé
+   par une fonction (`full` ne filtre rien) ; l'identité du consentement et la
+   sonde sont servies à chaque niveau.
 
 Un fichier fautif lève `DescriptionError`, qui nomme le fichier, la fonction et la
 règle : la fabrique ne génère alors rien.
@@ -297,6 +304,59 @@ def check_settings(connector: dict, where: str) -> None:
         raise DescriptionError(f"{where}: setting(s) {', '.join(unused)} cited by no URL")
 
 
+def covered(scopes: list[str], implies: dict[str, list[str]]) -> set[str]:
+    """Les droits que couvrent ceux d'un niveau : eux-mêmes et ce qu'ils impliquent (`scope_implies`, clos)."""
+    return set(scopes).union(*(implies.get(scope, []) for scope in scopes))
+
+
+def served(function: dict, scopes: list[str], implies: dict[str, list[str]]) -> bool:
+    """Une fonction est servie à un niveau quand chacun des droits qu'elle exige est couvert par ceux du niveau."""
+    return set(function["scopes"]) <= covered(scopes, implies)
+
+
+def check_access_levels(data: dict, where: str) -> None:
+    """Règle 7 : implication close et utile, `full` couvre tout, identité et sonde servies à chaque niveau."""
+    auth = data["connector"]["auth"]
+    levels = auth.get("access_levels")
+    if levels is None:
+        return
+    implies = auth.get("scope_implies", {})
+    granted = {scope for level in levels.values() for scope in level["scopes"]}
+    for scope, implied in implies.items():
+        if scope not in granted:
+            raise DescriptionError(f"{where}: auth.scope_implies: {scope!r} is the scope of no access level")
+        missing = sorted({deeper for scope2 in implied for deeper in implies.get(scope2, [])} - set(implied) - {scope})
+        if missing:
+            raise DescriptionError(
+                f"{where}: auth.scope_implies: {scope!r} implies a scope that implies {', '.join(missing)}, "
+                f"which {scope!r} must then list too"
+            )
+    full = covered(levels["full"]["scopes"], implies)
+    for name, level in levels.items():
+        beyond = sorted(set(level["scopes"]) - full)
+        if beyond:
+            raise DescriptionError(
+                f"{where}: access level {name!r} asks for {', '.join(beyond)}, which level 'full' does not cover"
+            )
+    for function in data["functions"]:
+        beyond = sorted(set(function["scopes"]) - full)
+        if beyond:
+            raise DescriptionError(
+                f"{where}: function {function['name']}: scope(s) {', '.join(beyond)} not covered by level 'full'"
+            )
+    roles = [("auth.identity", auth["identity"]["function"])]
+    if "probe" in data["connector"]:
+        roles.append(("probe", data["connector"]["probe"]["function"]))
+    for role, name in roles:
+        function = next(f for f in data["functions"] if f["name"] == name)
+        for level_name, level in levels.items():
+            if not served(function, level["scopes"], implies):
+                raise DescriptionError(
+                    f"{where}: {role} {name!r} is not served at access level {level_name!r}: "
+                    f"its scopes ({', '.join(function['scopes'])}) are not all covered"
+                )
+
+
 def check(data: dict, path: pathlib.Path) -> Description:
     where = _relative(path)
     if not isinstance(data, dict):
@@ -315,6 +375,7 @@ def check(data: dict, path: pathlib.Path) -> Description:
     if twice:
         raise DescriptionError(f"{where}: function name(s) declared twice: {', '.join(twice)}")
     check_probe(data, where)
+    check_access_levels(data, where)
     return Description(path=path, data=data)
 
 

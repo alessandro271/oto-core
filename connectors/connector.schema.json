@@ -15,13 +15,30 @@
     },
     "exposure": { "$ref": "#/$defs/exposure" }
   },
-  "if": {
-    "properties": { "connector": { "not": { "anyOf": [{ "required": ["base_url"] }, { "required": ["base_urls"] }] } } }
-  },
-  "then": {
-    "$comment": "Without base_url or base_urls, every function must be handwritten.",
-    "properties": { "functions": { "items": { "required": ["handwritten"] } } }
-  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "connector": { "not": { "anyOf": [{ "required": ["base_url"] }, { "required": ["base_urls"] }] } } }
+      },
+      "then": {
+        "$comment": "Without base_url or base_urls, every function must be handwritten.",
+        "properties": { "functions": { "items": { "required": ["handwritten"] } } }
+      }
+    },
+    {
+      "if": {
+        "properties": { "connector": { "properties": { "auth": { "required": ["access_levels"] } } } }
+      },
+      "then": {
+        "$comment": "A connector with access levels: every function declares the scopes it requires.",
+        "properties": { "functions": { "items": { "required": ["scopes"] } } }
+      },
+      "else": {
+        "$comment": "A connector without access levels: no function declares scopes.",
+        "properties": { "functions": { "items": { "not": { "required": ["scopes"] } } } }
+      }
+    }
+  ],
   "$defs": {
     "identifier": {
       "type": "string",
@@ -386,7 +403,15 @@
             "token_url": { "description": "Token endpoint, called with a form body (authorization code, refresh, exchange).", "$ref": "#/$defs/url_template" },
             "token_urls": { "$ref": "#/$defs/urls_by_setting" },
             "client_auth": { "$ref": "#/$defs/client_auth" },
-            "scopes": { "description": "Joined by spaces in the authorization request.", "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+            "scopes": { "description": "Joined by spaces in the authorization request. Exclusive of access_levels: a connector without levels keeps scopes, and that is its full level.", "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/text" } },
+            "access_levels": { "$ref": "#/$defs/access_levels" },
+            "scope_implies": {
+              "description": "With access_levels: a scope that covers others, as the provider defines it. Never a guessed rule: a broad scope covers a narrower one only when this file says so.",
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": { "minLength": 1 },
+              "additionalProperties": { "$ref": "#/$defs/scope_list" }
+            },
             "authorize_params": {
               "description": "Constant parameters added to the authorization URL. Never one the host sets itself.",
               "type": "object",
@@ -434,7 +459,9 @@
           },
           "required": ["kind", "authorize_url", "client_auth", "refresh", "identity"],
           "oneOf": [{ "required": ["token_url"] }, { "required": ["token_urls"] }],
+          "dependentRequired": { "scope_implies": ["access_levels"] },
           "allOf": [
+            { "not": { "required": ["scopes", "access_levels"] } },
             {
               "if": { "properties": { "refresh": { "const": "refresh_token" } } },
               "then": { "required": ["rotates"] },
@@ -458,6 +485,27 @@
     "client_auth": {
       "description": "How the client id and secret reach the token endpoint: in the request body, or as HTTP Basic.",
       "enum": ["body", "basic"]
+    },
+    "scope_list": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/text" }
+    },
+    "access_levels": {
+      "description": "Named access levels of a consent. full is required and filters nothing; any other name (read, support...) is a restricted level. Each level lists the scopes its consent asks for. The host picks one per organisation or team; a function is served at a level when each of its scopes is a scope of the level or implied by one (scope_implies).",
+      "type": "object",
+      "required": ["full"],
+      "minProperties": 2,
+      "propertyNames": { "$ref": "#/$defs/identifier" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scopes"],
+        "properties": {
+          "scopes": { "description": "Joined by spaces in the authorization request of this level.", "$ref": "#/$defs/scope_list" }
+        }
+      }
     },
     "input_schema": {
       "description": "JSON Schema of the function input: a strict object.",
@@ -497,6 +545,10 @@
         "name": { "description": "A verb and its object.", "$ref": "#/$defs/identifier" },
         "class": { "enum": ["read", "write", "sensitive"] },
         "description": { "description": "What the agent reads, in English; at most 1000 characters.", "$ref": "#/$defs/text", "maxLength": 1000 },
+        "scopes": {
+          "description": "Only in a connector with access levels, where it is required: the scopes this function requires, all of them. It is served at a level when each is a scope of the level or implied by one. class stays: it says what the function does.",
+          "$ref": "#/$defs/scope_list"
+        },
         "input": { "$ref": "#/$defs/input_schema" },
         "examples": {
           "description": "Each input is validated against the function input.",

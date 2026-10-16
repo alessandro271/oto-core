@@ -164,6 +164,10 @@ def function_source(connector: str, function: dict) -> str:
         ("name", js(qualified)),
         ("connector", js(connector)),
         ("class", js(function["class"])),
+    ]
+    if "scopes" in function:
+        entries.append(("scopes", js(function["scopes"])))
+    entries += [
         ("description", js(function["description"].strip())),
         ("schema", schema),
         ("examples", _list(examples, 1)),
@@ -194,8 +198,8 @@ def _check(check: dict) -> str:
 
 
 def _auth(connector: str, auth: dict) -> str:
-    """Les clés du format en camelCase ; les valeurs telles quelles (noms côté API, adresses), sauf l'identité,
-    qualifiée comme la sonde, et les clés de `exchange`."""
+    """Les clés du format en camelCase ; les valeurs telles quelles (noms côté API, adresses, noms des niveaux
+    d'accès et droits), sauf l'identité, qualifiée comme la sonde, et les clés de `exchange`."""
     entries = {}
     for key, value in auth.items():
         if key == "identity":

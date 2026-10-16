@@ -50,6 +50,32 @@ describe("generated definitions", () => {
     expect(connector.credential).toEqual([])
   })
 
+  // Niveaux d'accès : une fonction est servie à un niveau quand chacun de ses droits est un droit du niveau ou impliqué par
+  // l'un d'eux. `full` sert tout ; l'identité du consentement est servie à chaque niveau ; sans niveaux, aucun droit.
+  const covered = (scopes: readonly string[], implies: { readonly [scope: string]: readonly string[] }) =>
+    new Set(scopes.flatMap((scope) => [scope, ...(implies[scope] ?? [])]))
+  const leveled = consents.flatMap(([name, connector, auth]) => (auth.accessLevels ? [[name, connector, auth.accessLevels, auth.scopeImplies ?? {}, auth.identity] as const] : []))
+  it.each(leveled)("%s: full serves every function, and every level serves the identity", (_name, connector, levels, implies, identity) => {
+    const full = covered(levels.full.scopes, implies)
+    for (const fn of connector.functions) {
+      expect(fn.scopes?.length, fn.name).toBeGreaterThan(0)
+      for (const scope of fn.scopes ?? []) expect(full.has(scope), `${fn.name}: ${scope}`).toBe(true)
+    }
+    const who = connector.functions.find((fn) => fn.name === identity.function)
+    expect(Object.keys(levels).length).toBeGreaterThan(1)
+    for (const [level, { scopes }] of Object.entries(levels)) {
+      const granted = covered(scopes, implies)
+      for (const scope of who?.scopes ?? ["(none)"]) expect(granted.has(scope), `${level}: ${scope}`).toBe(true)
+    }
+  })
+
+  it.each(connectors.filter((c) => !(c.auth.kind === "oauth2_user" && c.auth.accessLevels)).map((c) => [c.name, c] as const))(
+    "%s: without access levels, no function declares scopes",
+    (_name, connector) => {
+      for (const fn of connector.functions) expect(fn.scopes, fn.name).toBeUndefined()
+    },
+  )
+
   it.each(connectors.filter((c) => c.baseUrls).map((c) => [c.name, c] as const))("%s: base URLs give one address per choice", (_name, connector) => {
     const setting = connector.settings?.find((s) => s.name === connector.baseUrls?.setting)
     expect(setting?.type).toBe("choice")

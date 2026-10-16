@@ -14,7 +14,7 @@ import pytest
 import yaml
 
 from fabrique.build import generate, stale
-from fabrique.descriptions import CONNECTORS, DescriptionError, check
+from fabrique.descriptions import CONNECTORS, DescriptionError, check, served
 from fabrique.typescript import NotGenerated, connector_module, function_source, js_block
 
 SELLSY = CONNECTORS / "sellsy" / "connector.yaml"
@@ -310,3 +310,103 @@ def test_connector_carries_settings_urls_and_consent():
         assert fragment in microsoft
     sellsy = connector_module(check(_load(SELLSY), SELLSY)).source
     assert '"clientAuth": "body"' in sellsy and '"tokenRequest": "json"' in sellsy
+
+
+# --- Règle 7 : niveaux d'accès (docs/conception/niveaux-d-acces.md) -----------------
+
+GMAIL = CONNECTORS / "gmail" / "connector.yaml"
+OUTPUT = CONNECTORS.parent / "ts" / "src"
+READ = "Estimates.READ"
+ALL = "Estimates.ALL"
+SETTINGS = "Settings.READ"
+
+
+def _levels(d, **changes):
+    """Sellsy en consentement à deux niveaux : `full` accorde `Estimates.ALL`, qui implique `Estimates.READ`."""
+    _consent(d, access_levels={"read": {"scopes": [READ, SETTINGS]}, "full": {"scopes": [ALL, SETTINGS]}},
+             scope_implies={ALL: [READ]}, **changes)
+    for function in d["functions"]:
+        function["scopes"] = [READ]
+
+
+def test_access_levels_pass_and_are_carried():
+    description = _load(SELLSY)
+    _levels(description)
+    _fn(description, "get_estimate")["scopes"] = [READ, SETTINGS]
+    module = connector_module(check(description, SELLSY))
+    assert '"accessLevels": {' in module.source and '"read": {"scopes": ["Estimates.READ", "Settings.READ"]}' in module.source
+    assert '"scopeImplies": {"Estimates.ALL": ["Estimates.READ"]}' in module.source
+    assert '  class: "read",\n  scopes: ["Estimates.READ", "Settings.READ"],\n  description: ' in module.source
+    assert '"scopes":' not in module.source.split("auth: {")[1].split("accessLevels")[0]
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda d: d["connector"]["auth"]["scope_implies"].update({"Records.ALL": [READ]}),
+     "auth.scope_implies: 'Records.ALL' is the scope of no access level"),
+    (lambda d: (d["connector"]["auth"]["access_levels"]["full"]["scopes"].append("Everything"),
+                d["connector"]["auth"]["scope_implies"].update({"Everything": [ALL]})),
+     "auth.scope_implies: 'Everything' implies a scope that implies Estimates.READ, which 'Everything' must then list too"),
+    (lambda d: d["connector"]["auth"]["access_levels"]["read"]["scopes"].append("Users.READ"),
+     "access level 'read' asks for Users.READ, which level 'full' does not cover"),
+    (lambda d: _fn(d, "get_estimate").update(scopes=[READ, "Users.READ"]),
+     "function get_estimate: scope(s) Users.READ not covered by level 'full'"),
+    (lambda d: (d["connector"]["auth"]["access_levels"]["read"].update(scopes=[SETTINGS]),),
+     "auth.identity 'list_estimates' is not served at access level 'read'"),
+    (lambda d: (d["connector"].update(probe={"function": "list_estimates"}),
+                d["connector"]["auth"].update(identity={"function": "list_estimates", "path": "data"}),
+                d["connector"]["auth"]["access_levels"].update(support={"scopes": [SETTINGS]})),
+     "auth.identity 'list_estimates' is not served at access level 'support'"),
+], ids=["implies_unused", "implies_not_closed", "level_beyond_full", "function_beyond_full", "identity_not_served",
+        "identity_not_served_at_every_level"])
+def test_access_level_rule_refuses(mutate, message):
+    description = _load(SELLSY)
+    _levels(description)
+    mutate(description)
+    with pytest.raises(DescriptionError, match=re.escape(message)):
+        check(description, SELLSY)
+
+
+def test_probe_must_be_served_at_every_level():
+    description = _load(SELLSY)
+    _levels(description)
+    description["connector"]["probe"] = {"function": "list_estimates"}
+    _fn(description, "list_estimates")["scopes"] = [READ]
+    check(description, SELLSY)
+    description["connector"]["auth"]["identity"] = {"function": "list_estimates", "path": "data"}
+    _fn(description, "list_estimates")["scopes"] = [ALL]
+    with pytest.raises(DescriptionError, match=re.escape("auth.identity 'list_estimates' is not served at access level 'read'")):
+        check(description, SELLSY)
+
+
+def test_closed_implication_passes():
+    """Un droit impliqué qui en implique d'autres : la clé qui l'implique les liste aussi, et la lecture en un pas suffit."""
+    description = _load(SELLSY)
+    _levels(description)
+    auth = description["connector"]["auth"]
+    auth["access_levels"]["full"]["scopes"] = ["Everything", SETTINGS]
+    auth["access_levels"]["read"]["scopes"] = [ALL, SETTINGS]
+    auth["scope_implies"] = {"Everything": [ALL, READ], ALL: [READ]}
+    check(description, SELLSY)
+
+
+def test_gmail_levels_serve_reads_at_read_and_everything_at_full():
+    """Ce que l'hôte filtre : au niveau `read`, les lectures seules ; à `full`, tout, comme sans niveaux."""
+    description = check(_load(GMAIL), GMAIL)
+    auth = description.data["connector"]["auth"]
+    levels, implies = auth["access_levels"], auth["scope_implies"]
+    functions = description.data["functions"]
+    at_read = {f["name"] for f in functions if served(f, levels["read"]["scopes"], implies)}
+    assert at_read == {f["name"] for f in functions if f["class"] == "read"}
+    assert all(served(f, levels["full"]["scopes"], implies) for f in functions)
+
+
+@pytest.mark.parametrize("path", [p for p in sorted(CONNECTORS.glob("*/connector.yaml"))
+                                  if "access_levels" not in yaml.safe_load(p.read_text(encoding="utf-8"))["connector"]["auth"]],
+                         ids=lambda p: p.parent.name)
+def test_connector_without_levels_is_unchanged(path):
+    """Un connecteur sans niveaux sort à l'octet près comme avant : son module est celui qui est commité, sans `accessLevels`
+    ni `scopes` de fonction."""
+    module = connector_module(check(_load(path), path))
+    assert "accessLevels" not in module.source and "scopeImplies" not in module.source
+    assert "\n  scopes: " not in module.source
+    assert module.source == (OUTPUT / f"{module.connector}.ts").read_text(encoding="utf-8")

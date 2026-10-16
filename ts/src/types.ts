@@ -56,6 +56,27 @@ export type OAuthRefresh =
   | { readonly refresh: "exchange"; readonly exchange: { readonly grantType: string; readonly tokenParam: string }; readonly rotates?: never }
   | { readonly refresh: "none"; readonly rotates?: never; readonly exchange?: never }
 
+/** Les droits que demande le consentement d'un niveau d'accès, joints par des espaces. */
+export type AccessLevel = { readonly scopes: readonly string[] }
+
+/**
+ * Les droits d'un consentement. Sans niveaux : `scopes`, qui est le niveau `full`. Avec niveaux : `accessLevels`, qui
+ * porte `full` (il ne filtre rien) et au moins un niveau restreint (`read`, `support`…), et `scopeImplies`, un droit qui
+ * en couvre d'autres, tel que le fournisseur le définit (jamais une règle devinée ; close : un droit impliqué n'en
+ * implique pas d'autres que la clé ne liste pas). L'hôte choisit un niveau par organisation, puis par équipe, qui le
+ * restreint sans jamais l'élargir ; `full` par défaut. Une fonction est servie à un niveau quand chacun de ses `scopes`
+ * est un droit du niveau ou impliqué par l'un d'eux ; sinon elle sort de ce que voit l'agent et l'appel est refusé par
+ * `access_level_denied`, qui nomme le niveau et l'opération. Le consentement demande les droits du niveau en vigueur au
+ * départ, signé dans l'état du flux ; passer d'un niveau restreint à `full` demande un nouveau consentement.
+ */
+export type OAuthScopes =
+  | { readonly scopes?: readonly string[]; readonly accessLevels?: never; readonly scopeImplies?: never }
+  | {
+      readonly accessLevels: { readonly full: AccessLevel; readonly [level: string]: AccessLevel }
+      readonly scopeImplies?: { readonly [scope: string]: readonly string[] }
+      readonly scopes?: never
+    }
+
 /**
  * Le consentement d'une personne (code d'autorisation, OAuth 2.0). L'application OAuth (identifiant et secret du client)
  * n'est ni dans la description ni dans `credential` : c'est celle de l'hôte, ou celle que pose l'organisation. Les jetons
@@ -67,7 +88,6 @@ export type OAuthUser = {
   readonly kind: "oauth2_user"
   readonly authorizeUrl: string
   readonly clientAuth: ClientAuth
-  readonly scopes?: readonly string[]
   readonly authorizeParams?: { readonly [param: string]: string }
   /** Preuve de possession du code (PKCE), par SHA-256. */
   readonly pkce?: "S256"
@@ -83,7 +103,7 @@ export type OAuthUser = {
    * `baseUrl` comme un réglage (une `instance_url` qui devient l'adresse de l'API).
    */
   readonly fromToken?: readonly string[]
-} & TokenEndpoint & OAuthRefresh
+} & TokenEndpoint & OAuthRefresh & OAuthScopes
 
 /**
  * Chaque valeur qui désigne un secret nomme un champ de `credential`, jamais une valeur. Une clé passée en query
@@ -196,6 +216,11 @@ export type ConnectorFunction = {
   readonly name: string
   readonly connector: string
   readonly class: FunctionClass
+  /**
+   * Présent si et seulement si le connecteur a des niveaux d'accès (`OAuthScopes`) : les droits que la fonction exige,
+   * tous. `class` dit ce que fait la fonction, `scopes` ce qu'elle exige.
+   */
+  readonly scopes?: readonly string[]
   /** Anglais : ce que lit l'agent. */
   readonly description: string
   /** JSON Schema 2020-12 de l'entrée, celui de la description : racine `type: object`, `additionalProperties: false`. */

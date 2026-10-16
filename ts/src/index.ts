@@ -4,6 +4,9 @@ import * as aircall from "./aircall"
 import * as amplitude from "./amplitude"
 import * as claap from "./claap"
 import * as fod from "./fod"
+import * as gmail from "./gmail"
+import * as googleCalendar from "./google_calendar"
+import * as googleDrive from "./google_drive"
 import * as klaviyo from "./klaviyo"
 import * as mailpool from "./mailpool"
 import * as metaAds from "./meta_ads"
@@ -27,6 +30,9 @@ export { aircall }
 export { amplitude }
 export { claap }
 export { fod }
+export { gmail }
+export { googleCalendar }
+export { googleDrive }
 export { klaviyo }
 export { mailpool }
 export { metaAds }
@@ -52,6 +58,9 @@ export const connectors: readonly Connector[] = [
   amplitude.connector,
   claap.connector,
   fod.connector,
+  gmail.connector,
+  googleCalendar.connector,
+  googleDrive.connector,
   klaviyo.connector,
   mailpool.connector,
   metaAds.connector,
