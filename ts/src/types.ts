@@ -154,16 +154,45 @@ export type Auth =
   | OAuthUser
   | { readonly kind: "none" }
 
-/** Une ligne de la table d'erreurs du connecteur : un ou plusieurs statuts HTTP du tiers, le refus nommé. */
+/**
+ * Ce qu'un refus révèle du compte, pour que l'hôte le marque jusqu'à son prochain appel réussi : `credential_rejected`, le
+ * service refuse la clé ou le jeton du compte ; `quota_exhausted`, ses crédits ou le quota de son offre sont épuisés.
+ * Seul ce qui est déclaré marque : rien ne marque par défaut.
+ */
+export type AccountMark = "credential_rejected" | "quota_exhausted"
+
+/**
+ * Une condition sur le corps JSON de la réponse : la valeur au chemin pointé `path` (un indice de liste en chiffres) est
+ * égale à l'une de `equals`. L'entrée ne vaut que si elle tient ; sinon l'hôte essaie l'entrée suivante du même statut.
+ * Un statut 2xx n'est un refus que sous une condition (une erreur GraphQL sous un 200).
+ */
+export type BodyCondition = { readonly path: string; readonly equals: readonly (string | number | boolean)[] }
+
+/**
+ * Une ligne de la table d'erreurs du connecteur : un ou plusieurs statuts HTTP du tiers, une condition sur le corps
+ * facultative, le refus nommé ; la première ligne qui s'applique l'emporte. `marksAccount` : le refus marque le compte
+ * (jamais `credential_rejected` sur un 403, ni `quota_exhausted` sur un 429, sans condition sur le corps).
+ */
 export type ApiError = {
   readonly status: number | readonly number[]
   readonly code: string
   readonly message: string
   readonly retryable: boolean
+  readonly body?: BodyCondition
+  readonly marksAccount?: AccountMark
 }
 
-/** Un refus propre à une fonction : surcharge ou complète la table d'erreurs ; `when` est un statut HTTP ou une condition. */
-export type Refusal = { readonly code: string; readonly when: number | string; readonly message: string }
+/**
+ * Un refus propre à une fonction : surcharge ou complète la table d'erreurs ; `when` est un statut HTTP ou une condition.
+ * `body` et `marksAccount` comme dans la table d'erreurs, sous un statut seulement.
+ */
+export type Refusal = {
+  readonly code: string
+  readonly when: number | string
+  readonly message: string
+  readonly body?: BodyCondition
+  readonly marksAccount?: AccountMark
+}
 
 /** Un exemple d'arguments, valide contre le schéma de sa fonction (vérifié par la fabrique et par un test). */
 export type Example = { readonly title: string; readonly input: { readonly [argument: string]: unknown } }

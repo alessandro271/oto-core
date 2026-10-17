@@ -46,7 +46,17 @@ pas dire :
    API de `call` (paramètre du chemin, de query, de corps, en-tête), aucune constante
    ni aucun en-tête constant ne porte son nom : l'agent ne la fournit jamais ;
 9. `act` suit la classe : jamais `false` sur une fonction `sensitive`, jamais `true`
-   sur une fonction `read` ; absent, il vaut `false` pour `read`, `true` sinon.
+   sur une fonction `read` ; absent, il vaut `false` pour `read`, `true` sinon ;
+10. le signal de refus du service (une entrée de `errors` ou un refus qui porte
+   `marks_account`, une condition sur le corps `body`) : un refus qui porte l'un ou
+   l'autre a un statut pour `when`, jamais une condition en texte ; un statut 2xx
+   exige une condition sur le corps (sinon chaque succès serait un refus) ; un 403
+   sans condition sur le corps ne marque jamais `credential_rejected` (un droit
+   manquant n'est pas une clé refusée), ni un 429 sans condition `quota_exhausted`
+   (un débit dépassé n'est pas un crédit épuisé) ; une entrée qui marque le compte
+   n'est pas rejouable ; dans une même table, une entrée à condition ne vient pas
+   après une entrée sans condition qui partage un de ses statuts (elle ne serait
+   jamais lue).
 
 Un fichier fautif lève `DescriptionError`, qui nomme le fichier, la fonction et la
 règle : la fabrique ne génère alors rien.
@@ -230,6 +240,54 @@ def check_act(function: dict, where: str) -> None:
         raise DescriptionError(f"{where}: function {function['name']}: a sensitive function cannot declare act: false")
     if declared is True and function["class"] == "read":
         raise DescriptionError(f"{where}: function {function['name']}: a read function cannot declare act: true")
+
+
+def _statuses(entry: dict) -> list[int]:
+    status = entry["status"] if "status" in entry else entry["when"]
+    return status if isinstance(status, list) else [status]
+
+
+def _check_signal_table(entries: list[dict], at: str, where: str) -> None:
+    """Règle 10, sur une table (`errors` du connecteur, ou les refus d'une fonction)."""
+    plain: set[int] = set()
+    for entry in entries:
+        label = f"{at} {entry['code']!r}"
+        if "status" not in entry and not isinstance(entry["when"], int):
+            if "body" in entry or "marks_account" in entry:
+                raise DescriptionError(
+                    f"{where}: {label}: a refusal with body or marks_account needs an HTTP status in when, not a text condition"
+                )
+            continue
+        statuses = _statuses(entry)
+        body = "body" in entry
+        mark = entry.get("marks_account")
+        if not body and any(200 <= status < 300 for status in statuses):
+            raise DescriptionError(f"{where}: {label}: a 2xx status needs a body condition, or every success would be refused")
+        if mark == "credential_rejected" and not body and 403 in statuses:
+            raise DescriptionError(
+                f"{where}: {label}: a 403 without a body condition cannot mark credential_rejected (a missing right is not a refused key)"
+            )
+        if mark == "quota_exhausted" and not body and 429 in statuses:
+            raise DescriptionError(
+                f"{where}: {label}: a 429 without a body condition cannot mark quota_exhausted (a rate limit is not spent credits)"
+            )
+        if mark is not None and entry.get("retryable") is True:
+            raise DescriptionError(f"{where}: {label}: an entry that marks the account is not retryable")
+        shadowed = sorted(plain.intersection(statuses))
+        if body and shadowed:
+            raise DescriptionError(
+                f"{where}: {label}: its body condition comes after an entry without one for status "
+                f"{', '.join(map(str, shadowed))}, so it is never read"
+            )
+        if not body:
+            plain.update(statuses)
+
+
+def check_signals(data: dict, where: str) -> None:
+    """Règle 10 : le signal de refus du service, dans la table du connecteur et dans les refus de chaque fonction."""
+    _check_signal_table(data["connector"]["errors"], "errors", where)
+    for function in data["functions"]:
+        _check_signal_table(function.get("refusals", []), f"function {function['name']}: refusal", where)
 
 
 def check_checks(function: dict, where: str) -> None:
@@ -492,6 +550,7 @@ def check(data: dict, path: pathlib.Path) -> Description:
         raise DescriptionError(f"{where}: function name(s) declared twice: {', '.join(twice)}")
     check_probe(data, where)
     check_access_levels(data, where)
+    check_signals(data, where)
     return Description(path=path, data=data)
 
 

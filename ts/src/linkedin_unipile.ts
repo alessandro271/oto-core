@@ -381,7 +381,7 @@ export const connector = defineConnector({
   queryArrays: "repeat",
   errors: [
     { status: 400, code: "invalid_request", message: "Unipile rejected the request as invalid: check the arguments.", retryable: false },
-    { status: 401, code: "account_disconnected", message: "The LinkedIn session of this account is disconnected: reconnect your LinkedIn account.", retryable: false },
+    { status: 401, code: "account_disconnected", message: "The LinkedIn session of this account is disconnected: reconnect your LinkedIn account.", retryable: false, marksAccount: "credential_rejected" },
     { status: 403, code: "forbidden", message: "This action is out of the scope of this LinkedIn account (a LinkedIn product or permission it does not have).", retryable: false },
     { status: 404, code: "not_found", message: "LinkedIn object not found: check the identifier.", retryable: false },
     { status: 429, code: "rate_limited", message: "LinkedIn limit reached for this account (profile and company pages are capped per account): retry later, possibly hours later.", retryable: true },

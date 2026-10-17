@@ -36,7 +36,7 @@ connector:
   errors:
     - { status: 400, code: invalid_request, retryable: false,
         message: "FOD or its upstream source rejected an argument as invalid; the message names the accepted values when there is a closed list." }
-    - { status: 401, code: access_rejected, retryable: false,
+    - { status: 401, code: access_rejected, retryable: false, marks_account: credential_rejected,
         message: "FOD refused the API key: unknown, revoked or missing. Retrying unchanged fails the same way." }
     - { status: 404, code: not_found, retryable: false,
         message: "Not found in FOD: check the identifier." }

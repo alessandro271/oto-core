@@ -1258,7 +1258,7 @@ export const connector = defineConnector({
   timeoutMs: 60000,
   errors: [
     { status: 400, code: "invalid_request", message: "FOD or its upstream source rejected an argument as invalid; the message names the accepted values when there is a closed list.", retryable: false },
-    { status: 401, code: "access_rejected", message: "FOD refused the API key: unknown, revoked or missing. Retrying unchanged fails the same way.", retryable: false },
+    { status: 401, code: "access_rejected", message: "FOD refused the API key: unknown, revoked or missing. Retrying unchanged fails the same way.", retryable: false, marksAccount: "credential_rejected" },
     { status: 404, code: "not_found", message: "Not found in FOD: check the identifier.", retryable: false },
     { status: 422, code: "invalid_arguments", message: "FOD rejected the arguments: a value has the wrong type or is out of bounds.", retryable: false },
     { status: 429, code: "rate_limited", message: "The upstream public source behind FOD reached its quota: retry in a moment.", retryable: true },

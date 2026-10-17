@@ -614,3 +614,80 @@ def test_linkedin_sends_act_and_reads_do_not():
     for name in ("sendInvitation", "sendMessage"):
         assert f'export const {name} = defineFunction({{\n  name: ' in module
     assert module.count("  act: true,\n") == 2 and module.count("  act: false,\n") == 8
+
+
+# --- Règle 10 : le signal de refus du service ----------------------------------------
+
+META_ADS = CONNECTORS / "meta_ads" / "connector.yaml"
+GRAPHQL_REFUSAL = {"path": "errors.0.extensions.code", "equals": ["UNAUTHENTICATED"]}
+
+
+def _error(d, status):
+    return next(e for e in d["connector"]["errors"] if e["status"] == status)
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda d: _error(d, 402).update(marks_account="quota_exhausted"),
+    lambda d: d["connector"]["errors"].insert(0, {"status": 200, "body": GRAPHQL_REFUSAL, "code": "key_refused",
+                                                  "message": "The key is refused.", "retryable": False,
+                                                  "marks_account": "credential_rejected"}),
+    lambda d: d["connector"]["errors"].insert(0, {"status": [400, 403], "body": {"path": "error", "equals": ["invalid_key"]},
+                                                  "code": "key_refused", "message": "The key is refused.", "retryable": False,
+                                                  "marks_account": "credential_rejected"}),
+    lambda d: _get_estimate(d)["refusals"].append({"code": "credits_spent", "when": 429, "message": "Credits spent.",
+                                                   "body": {"path": "reason", "equals": ["monthly_quota"]},
+                                                   "marks_account": "quota_exhausted"}),
+], ids=["status_402", "graphql_under_200", "body_under_400_and_403", "refusal_body_under_429"])
+def test_account_signal_passes_and_is_carried(mutate):
+    description = _load(SELLSY)
+    mutate(description)
+    source = connector_module(check(description, SELLSY)).source
+    assert "marksAccount: " in source
+
+
+def test_meta_ads_marks_on_graph_codes_under_a_400_before_the_plain_400():
+    errors = _load(META_ADS)["connector"]["errors"]
+    assert errors[0] == {"status": 400, "body": {"path": "error.code", "equals": [190, 102]}, "code": "authorization_expired",
+                         "retryable": False, "marks_account": "credential_rejected",
+                         "message": errors[0]["message"]}
+    assert errors[1]["status"] == 400 and "body" not in errors[1] and "marks_account" not in errors[1]
+    source = connector_module(check(_load(META_ADS), META_ADS)).source
+    assert 'body: {"path": "error.code", "equals": [190, 102]}, marksAccount: "credential_rejected" }' in source
+
+
+def test_nothing_marks_by_default():
+    sellsy = connector_module(check(_load(SELLSY), SELLSY)).source
+    assert "marksAccount" not in sellsy and 'body: {"path"' not in sellsy
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda d: _error(d, [401, 403]).update(marks_account="credential_rejected"),
+     "errors 'access_rejected': a 403 without a body condition cannot mark credential_rejected"),
+    (lambda d: _error(d, 429).update(marks_account="quota_exhausted"),
+     "errors 'rate_limited': a 429 without a body condition cannot mark quota_exhausted"),
+    (lambda d: _error(d, 402).update(marks_account="quota_exhausted", retryable=True),
+     "errors 'plan_quota_reached': an entry that marks the account is not retryable"),
+    (lambda d: d["connector"]["errors"].insert(0, {"status": 200, "code": "key_refused", "message": "Refused.", "retryable": False}),
+     "errors 'key_refused': a 2xx status needs a body condition"),
+    (lambda d: d["connector"]["errors"].append({"status": 400, "body": {"path": "error", "equals": ["invalid_key"]},
+                                                "code": "key_refused", "message": "Refused.", "retryable": False,
+                                                "marks_account": "credential_rejected"}),
+     "errors 'key_refused': its body condition comes after an entry without one for status 400, so it is never read"),
+    (lambda d: _get_estimate(d)["refusals"].append({"code": "key_refused", "when": "the error code is invalid_key",
+                                                    "message": "Refused.", "marks_account": "credential_rejected"}),
+     "function get_estimate: refusal 'key_refused': a refusal with body or marks_account needs an HTTP status in when"),
+    (lambda d: _get_estimate(d)["refusals"].append({"code": "key_refused", "when": "the error code is invalid_key",
+                                                    "message": "Refused.", "body": {"path": "error", "equals": ["invalid_key"]}}),
+     "function get_estimate: refusal 'key_refused': a refusal with body or marks_account needs an HTTP status in when"),
+    (lambda d: _get_estimate(d)["refusals"].append({"code": "forbidden", "when": 403, "message": "Refused.",
+                                                    "marks_account": "credential_rejected"}),
+     "function get_estimate: refusal 'forbidden': a 403 without a body condition cannot mark credential_rejected"),
+    (lambda d: _get_estimate(d)["refusals"].append({"code": "empty", "when": 204, "message": "Nothing."}),
+     "function get_estimate: refusal 'empty': a 2xx status needs a body condition"),
+], ids=["403_alone", "429_alone", "retryable", "2xx_without_body", "shadowed", "mark_on_text_when", "body_on_text_when",
+        "refusal_403_alone", "refusal_2xx_without_body"])
+def test_account_signal_rule_refuses(mutate, message):
+    description = _load(SELLSY)
+    mutate(description)
+    with pytest.raises(DescriptionError, match=re.escape(message)):
+        check(description, SELLSY)

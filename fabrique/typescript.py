@@ -157,7 +157,7 @@ def function_source(connector: str, function: dict) -> str:
         for example in function["examples"]
     ]
     refusals = [
-        "{ code: " + js(r["code"]) + ", when: " + js(r["when"]) + ", message: " + js(r["message"]) + " }"
+        "{ code: " + js(r["code"]) + ", when: " + js(r["when"]) + ", message: " + js(r["message"]) + _signal(r) + " }"
         for r in function.get("refusals", [])
     ]
     entries = [
@@ -216,10 +216,21 @@ def _credential_field(field: dict) -> dict:
     return {"name": field["name"], "label": field["label"], "secret": field["secret"], "holder": field.get("holder", "account")}
 
 
+def _signal(entry: dict) -> str:
+    """Le signal de refus du service d'une entrée de la table ou d'un refus : sa condition sur le corps et la marque du
+    compte, quand elle les déclare."""
+    parts = []
+    if "body" in entry:
+        parts.append(", body: " + js(entry["body"]))
+    if "marks_account" in entry:
+        parts.append(", marksAccount: " + js(entry["marks_account"]))
+    return "".join(parts)
+
+
 def _errors(errors: list[dict]) -> str:
     rows = [
         "{ status: " + js(e["status"]) + ", code: " + js(e["code"]) + ", message: " + js(e["message"])
-        + ", retryable: " + js(e["retryable"]) + " }"
+        + ", retryable: " + js(e["retryable"]) + _signal(e) + " }"
         for e in errors
     ]
     return _list(rows, 1)
