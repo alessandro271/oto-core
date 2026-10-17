@@ -231,7 +231,7 @@ functions:
     output: { items: data }
 
   - name: start_insights_report
-    class: write
+    class: read
     description: >-
       Start an asynchronous insights report on Meta's side and return its
       report_run_id (valid 30 days). Then poll get_report_status until

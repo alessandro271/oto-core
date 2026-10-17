@@ -664,8 +664,8 @@ export const urbanGetZoningRegulation = defineFunction({
 export const urbanStartRegulationIngestion = defineFunction({
   name: "fod.urban_start_regulation_ingestion",
   connector: "fod",
-  class: "write",
-  act: true,
+  class: "read",
+  act: false,
   description: "Ask FOD to fetch and index the written regulation of a local plan it does not hold yet, from the national town-planning portal (GPU). The work runs in the background, from 20 seconds to a few minutes; the answer comes at once with the state {idurba, statut, message, ...}: en_cours (started, or already running), pret or scanne (already held, nothing restarted), echec (a recent failure, erreur gives the cause; no new attempt before relance_possible_apres). Calling it again never starts a second ingestion. Then read the ingestion state every 20 to 30 seconds until pret, scanne or echec. FOD ingests one regulation at a time: a busy answer asks to retry in a minute. A document replaced on the portal is not swapped for its successor; the refusal names the documents published for the same territory.",
   schema: {
     "type": "object",

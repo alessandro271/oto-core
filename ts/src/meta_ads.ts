@@ -275,8 +275,8 @@ export const getInsights = defineFunction({
 export const startInsightsReport = defineFunction({
   name: "meta_ads.start_insights_report",
   connector: "meta_ads",
-  class: "write",
-  act: true,
+  class: "read",
+  act: false,
   description: "Start an asynchronous insights report on Meta's side and return its report_run_id (valid 30 days). Then poll get_report_status until async_status is Job Completed, and read the rows with get_report_insights. Same parameters as get_insights; the attribution windows default to those of the synchronous call (7d_click, 1d_view), so both modes give the same figures.",
   schema: {
     "type": "object",
