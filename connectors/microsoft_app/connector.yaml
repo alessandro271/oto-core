@@ -199,6 +199,7 @@ functions:
 
   - name: create_draft
     class: write
+    act: false
     description: >-
       Create a draft in the Drafts folder of the account's mailbox, without
       sending it, and return it with its id and webLink, where someone can review and

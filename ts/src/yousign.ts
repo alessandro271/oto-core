@@ -184,7 +184,7 @@ export const createSignatureRequestFromTemplate = defineFunction({
   name: "yousign.create_signature_request_from_template",
   connector: "yousign",
   class: "write",
-  act: true,
+  act: false,
   description: "Create a draft signature request from an active template, with its documents and fields; nothing is sent until activation. Fill each signer placeholder of the template (get_template) by its label, with the signer's identity; every signer is notified by email at activation. Returns the request, with its id and status draft.",
   schema: {
     "type": "object",
@@ -302,7 +302,7 @@ export const addSigner = defineFunction({
   name: "yousign.add_signer",
   connector: "yousign",
   class: "write",
-  act: true,
+  act: false,
   description: "Add a signer to a draft signature request; they are emailed at activation. A signer needs at least one signature field on a document: for a request built from a template, fill the signer placeholders at creation instead. Returns the signer, with its id and status.",
   schema: {
     "type": "object",

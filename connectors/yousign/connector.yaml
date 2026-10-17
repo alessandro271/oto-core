@@ -181,6 +181,7 @@ functions:
 
   - name: create_signature_request_from_template
     class: write
+    act: false
     description: >-
       Create a draft signature request from an active template, with its
       documents and fields; nothing is sent until activation. Fill each
@@ -275,6 +276,7 @@ functions:
 
   - name: add_signer
     class: write
+    act: false
     description: >-
       Add a signer to a draft signature request; they are emailed at
       activation. A signer needs at least one signature field on a document:

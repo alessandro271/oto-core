@@ -1058,7 +1058,7 @@ export const createCustomerInvoice = defineFunction({
   name: "pennylane.create_customer_invoice",
   connector: "pennylane",
   class: "write",
-  act: true,
+  act: false,
   description: "Create a customer invoice, always as a draft. The customer must exist (list_customers, create_customer). Finalizing and sending are separate functions, called only after explicit human validation. Each line takes exactly one of two shapes, with no other key (any deviation is refused as NotAnyOf): a product line {product_id, quantity}, the product filling the rest (label, raw_currency_unit_price, unit, vat_rate may override it); or a free line {label, quantity, unit, raw_currency_unit_price, vat_rate}, all required. raw_currency_unit_price is the unit price before tax as a string (\"700.00\"); quantity is a number, never a string. Pass an external_reference to trace the source and look it up before creating again.",
   schema: {
     "type": "object",
@@ -1149,7 +1149,7 @@ export const createCreditNote = defineFunction({
   name: "pennylane.create_credit_note",
   connector: "pennylane",
   class: "write",
-  act: true,
+  act: false,
   description: "Create a standalone credit note, always as a draft. In Pennylane v2 a credit note is a customer invoice with negative amounts: give every line a NEGATIVE quantity (crediting 195 credits at 1.45 is quantity -195, unit price \"1.45\"). Lines follow the invoice line shapes (product line or free line). Nothing is linked at creation: the creation-time credited_invoice_id is broken upstream; link afterwards with link_credit_note if needed, or name the original invoice in pdf_invoice_free_text. Pass the source event as external_reference and look it up first (list_customer_invoices) so one event gives one credit note. For the credit-note layout, pass the id of a credit-note template.",
   schema: {
     "type": "object",
@@ -1782,7 +1782,7 @@ export const createInvoiceFromQuote = defineFunction({
   name: "pennylane.create_invoice_from_quote",
   connector: "pennylane",
   class: "write",
-  act: true,
+  act: false,
   description: "Create a draft customer invoice from a quote, taking over its customer and lines. Finalizing and sending it remain separate steps after human validation. Needs the scope customer_invoices:all on top of quotes.",
   schema: {
     "type": "object",

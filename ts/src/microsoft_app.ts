@@ -259,7 +259,7 @@ export const createDraft = defineFunction({
   name: "microsoft_app.create_draft",
   connector: "microsoft_app",
   class: "write",
-  act: true,
+  act: false,
   description: "Create a draft in the Drafts folder of the account's mailbox, without sending it, and return it with its id and webLink, where someone can review and send it from Outlook. Needs Mail.ReadWrite (application).",
   schema: {
     "type": "object",
