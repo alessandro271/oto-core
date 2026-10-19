@@ -1,14 +1,22 @@
 // Chaque définition générée porte un nom qualifié et un JSON Schema d'entrée que valide un validateur JSON Schema 2020-12
 // standard (Ajv) : ses exemples passent, une clé inconnue est refusée. `format` reste une annotation, comme dans le test
-// des descriptions côté Python ; le mode strict d'Ajv signale tout mot-clé inconnu ou mal placé.
+// des descriptions côté Python ; le mode strict d'Ajv signale tout mot-clé inconnu ou mal placé, sauf `personal` (une
+// donnée personnelle, règle 14 de la fabrique), qu'il connaît comme le paquet de l'hôte qui ne la journalise pas.
 import { Ajv2020 } from "ajv/dist/2020.js"
 import { describe, expect, it } from "vitest"
 import { connectors } from "../src"
 
 const ajv = new Ajv2020({ strictTypes: false, strictTuples: false, validateFormats: false, allErrors: true })
+ajv.addKeyword({ keyword: "personal", schemaType: "boolean" })
 const functions = connectors.flatMap((connector) => connector.functions.map((fn) => [fn.name, connector, fn] as const))
 
 describe("generated definitions", () => {
+  it("should accept an input property marked personal, and refuse a mark that is not a boolean", () => {
+    const schema = { type: "object", additionalProperties: false, properties: { email: { type: "string", personal: true } } }
+    expect(ajv.validate(schema, { email: "someone@example.test" })).toBe(true)
+    expect(() => ajv.compile({ ...schema, properties: { email: { type: "string", personal: "yes" } } })).toThrow()
+  })
+
   it("should generate at least one function per connector", () => {
     for (const connector of connectors) expect(connector.functions.length, connector.name).toBeGreaterThan(0)
   })

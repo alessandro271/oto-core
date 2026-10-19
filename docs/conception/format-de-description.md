@@ -93,7 +93,7 @@ connector:
 | `act` | non (déduit de la classe) | La fonction engage ou détruit (envoi, corbeille, archive, déplacement) : booléen, `false` par défaut pour `read`, `true` pour `write` et `sensitive`. Une simple préparation, comme un brouillon, déclare `act: false`. Jamais `false` sur `sensitive`, jamais `true` sur `read` (la fabrique refuse). |
 | `scopes` | si le connecteur a des niveaux d'accès, interdit sinon | Les droits OAuth que la fonction exige, tous ([niveaux d'accès](niveaux-d-acces.md)). |
 | `description` | oui | En anglais, 1000 caractères au plus (borne du paquet d'oto 2) : ce que l'agent lit. |
-| `input` | oui | JSON Schema 2020-12 d'un objet strict (`type: object`, `additionalProperties: false`, `properties`), servi et validé tel quel. |
+| `input` | oui | JSON Schema 2020-12 d'un objet strict (`type: object`, `additionalProperties: false`, `properties`), servi et validé tel quel. Une propriété peut porter `personal: true` (« Donnée personnelle », ci-dessous). |
 | `examples` | oui, au moins un | `title` et `input`, chaque `input` validé contre `input`. |
 | `refusals` | non | `code`, `when` (statut HTTP ou condition), `message` : surcharge ou complète la table commune ; sous un statut seulement, `body` et `marks_account` comme dans la table. |
 | `checks` | non | Contrôles de l'entrée avant l'appel, chacun nomme un refus : `{ kind: equal_sums, refusal: entry_unbalanced, items: ledger_entry_lines, fields: [debit, credit] }` (sommes égales, chaînes décimales sommées exactement). |
@@ -108,6 +108,17 @@ connector:
 | `confirm` | si `sensitive` | `summary`, gabarit du résumé montré avant exécution (`Validate invoice {id}: irreversible.`). |
 
 **Lire et agir.** Chaque connecteur à effet se partage en deux côtés : `<connecteur>` (lire et simuler, brouillon compris) et `<connecteur>_act` (tout ce qui engage ou détruit : envoi, corbeille, archive, déplacement). Le partage se lit sur `act`, fonction par fonction : une seule description, un seul compte, et l'hôte sert les fonctions `act` sous le nom `<connecteur>_act.<fonction>`, les autres sous `<connecteur>.<fonction>`. `class` dit ce que fait une fonction et si elle se confirme ; `act`, de quel côté elle est servie : un brouillon est une écriture (`write`) qui reste du côté lecture (`act: false`).
+
+**Donnée personnelle** (écrit le 19/10) : `personal: true` sur une propriété de l'entrée, à toute profondeur (élément d'une liste, branche d'un `anyOf`), dit que sa valeur désigne une personne (un courriel, un nom, une adresse) : l'hôte ne la journalise jamais, ni dans les arguments, ni dans la cible, ni dans un message d'erreur du tiers qui la recopie. Le mot passe tel quel dans le schéma de la sortie TypeScript, que le paquet de l'hôte sert et valide ; il ne change ni l'appel ni la validation. Le client Python n'en fait rien. Jamais sur la racine, jamais dans `output.schema`, toujours `true` (la fabrique refuse, règle 15). Il dit une nature de l'argument, vraie chez tous les hôtes ; réserver une fonction au serveur de l'hôte reste le choix de l'hôte, jamais celui de la description.
+
+```yaml
+input:
+  type: object
+  additionalProperties: false
+  required: [email]
+  properties:
+    email: { type: string, personal: true }
+```
 
 **Délai par fonction** (décidé le 16/10, écrit le 19/10) : `timeout_s` sur une fonction remplace, pour elle seule, celui du connecteur, plus court ou plus long. La sortie TypeScript le porte en millisecondes (`timeoutMs` de la fonction, à côté de celui du connecteur) :
 
@@ -401,3 +412,4 @@ Deux gardes de CI, décidées le 16/10 et écrites le 19/10 :
 - 2026-10-19 : gardes de CI écrites : un client de la lib a sa description, en tout ou en partie (`described_by` peut nommer des fichiers d'un client), ou une exception à catégorie et raison dans `connectors/clients.yaml` (122 au départ), et les catégories en attente ne font que décroître ; chaque commit, contre son premier parent, monte la version d'un connecteur dont il change la description ou le client, sauf trailer `Version-dispense: <connecteur> — <raison>`, ou `*` dans une passe sur le format, jamais pour une version qui descend, et jamais sur la version de la lib — décidé par le mainteneur.
 - 2026-10-19 : coût d'un appel et travail asynchrone : `cost` garde `per: request` et `per: page` (une unité par requête envoyée, chaque page comprise) et gagne `per: item` (la taille de la liste `items` fois celle de `times`, deux arguments requis d'au moins un élément, jamais sur une fonction paginée), `unit` et `settle` (la quantité réelle relue dans la réponse, réglée au pire cas si elle est absente ou illisible) ; `async` relie une soumission à sa relève (`collect`, `job_id`, `within_s` d'un jour au plus, exigé quand le coût se règle, la quantité lue alors dans les réponses de la relève) ; règles 12 et 13 de la fabrique, sortie TypeScript ; `meta_ads` 1.1.0, `amplitude` 1.2.0 et `fod` 1.3.0 relient leur soumission à sa relève ; aucune description ne déclare de coût à l'élément ni de quantité relue — décidé par le mainteneur.
 - 2026-10-19 : fichiers en entrée : `call.files` associe une partie d'un corps `multipart/form-data` à l'argument qui porte l'identifiant d'un fichier en transit de l'appelant (un texte) ; les entrées de `body` en sont les parties texte ; l'hôte lit le fichier sous l'identité de l'appelant et le consomme après un envoi réussi seulement ; le type fichier est dit par la place de l'argument, pas par son schéma ; règle 14 de la fabrique, sortie TypeScript `request.files` ; `pennylane_firm` 1.1.0 dépose un fichier dans la GED (`upload_dms_file`, sensible) ; la sortie `file` et le corps brut restent à écrire — choix du projet (source : décision du mainteneur du 16/10 ; transfert de fichier entre connecteurs par un fichier en transit).
+- 2026-10-19 : donnée personnelle : `personal: true` sur une propriété de l'entrée, passé tel quel dans le schéma servi, que l'hôte ne journalise pas ; règle 15 de la fabrique ; aucune description ne le déclare encore — décidé par Alexis.

@@ -78,7 +78,10 @@ pas dire :
    porte l'identifiant d'un fichier en transit de l'appelant) : la méthode envoie un
    corps (`POST`, `PUT`, `PATCH`) ; la fonction n'est pas paginée ; chaque argument
    fichier est un texte (`type: string`), jamais encodé ; un nom de partie fichier
-   n'est ni un nom de `body` ni une constante de corps (une partie, une valeur).
+   n'est ni un nom de `body` ni une constante de corps (une partie, une valeur) ;
+15. la donnée personnelle (`personal`) : dans l'entrée, sur une propriété seulement,
+   jamais à la racine, et toujours `true` ; jamais dans le schéma de la sortie, où elle
+   ne voudrait rien dire. L'hôte ne journalise pas sa valeur.
 
 Un fichier fautif lève `DescriptionError`, qui nomme le fichier, la fonction et la
 règle : la fabrique ne génère alors rien.
@@ -363,6 +366,44 @@ def check_files(function: dict, where: str) -> None:
             raise DescriptionError(
                 f"{where}: function {name}: file argument {argument!r} must be type: string, the id of a transit file"
             )
+
+
+# Les mots d'un JSON Schema dont la valeur est un schéma, une liste de schémas, ou des schémas par nom : la donnée
+# personnelle se cherche là seulement, jamais dans `examples`, `default`, `const` ni `enum`, et le nom d'une propriété
+# (une propriété qui s'appellerait `personal`) n'est jamais lu comme un mot.
+SCHEMA_KEYWORDS = ("items", "additionalProperties", "not", "if", "then", "else", "contains", "propertyNames",
+                   "unevaluatedItems", "unevaluatedProperties")
+SCHEMA_LISTS = ("allOf", "anyOf", "oneOf", "prefixItems")
+SCHEMA_MAPS = ("properties", "patternProperties", "$defs", "dependentSchemas")
+
+
+def _personal_marks(schema: object, at: str) -> list[tuple[str, object]]:
+    """Chaque `personal` d'un schéma, avec sa place (`input.properties.email`)."""
+    if not isinstance(schema, dict):
+        return []
+    found = [(at, schema["personal"])] if "personal" in schema else []
+    for key in SCHEMA_KEYWORDS:
+        found += _personal_marks(schema.get(key), f"{at}.{key}")
+    for key in SCHEMA_LISTS:
+        for index, child in enumerate(schema.get(key) or []):
+            found += _personal_marks(child, f"{at}.{key}[{index}]")
+    for key in SCHEMA_MAPS:
+        for name, child in (schema.get(key) or {}).items():
+            found += _personal_marks(child, f"{at}.{key}.{name}")
+    return found
+
+
+def check_personal(function: dict, where: str) -> None:
+    """Règle 15 : `personal` marque une propriété de l'entrée, toujours `true` ; ni la racine ni la sortie."""
+    name = function["name"]
+    for at, value in _personal_marks(function["input"], "input"):
+        if at == "input":
+            raise DescriptionError(f"{where}: function {name}: personal marks a property of input, not input itself")
+        if value is not True:
+            raise DescriptionError(f"{where}: function {name}: {at}: personal must be true (declare it only where it applies)")
+    schema = (function.get("output") or {}).get("schema")
+    for at, _ in _personal_marks(schema, "output.schema"):
+        raise DescriptionError(f"{where}: function {name}: {at}: personal marks an input argument, not an output field")
 
 
 def _statuses(entry: dict) -> list[int]:
@@ -677,6 +718,7 @@ def check(data: dict, path: pathlib.Path) -> Description:
         check_cost(function, where)
         check_async(data, function, where)
         check_files(function, where)
+        check_personal(function, where)
     names = [function["name"] for function in data["functions"]]
     twice = sorted({n for n in names if names.count(n) > 1})
     if twice:

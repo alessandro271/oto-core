@@ -716,6 +716,44 @@ def test_account_signal_rule_refuses(mutate, message):
         check(description, SELLSY)
 
 
+# --- Règle 15 : la donnée personnelle ----------------------------------------------
+
+
+def test_personal_property_passes_and_is_carried_as_is():
+    description = _load(SELLSY)
+    estimate = _get_estimate(description)
+    estimate["input"]["properties"]["id"]["personal"] = True
+    estimate["input"]["properties"]["fields"]["items"]["personal"] = True
+    source = function_source("sellsy", _get_estimate(check(description, SELLSY).data))
+    assert '"id": {"type": "integer", "personal": true}' in source
+    assert source.count('"personal": true') == 2
+
+
+def test_a_property_named_personal_is_not_a_mark():
+    description = _load(SELLSY)
+    estimate = _get_estimate(description)
+    estimate["input"]["properties"]["personal"] = {"type": "string", "default": "no"}
+    estimate["call"]["query"]["personal"] = "personal"
+    check(description, SELLSY)
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda f: f["input"].update(personal=True), "personal marks a property of input, not input itself"),
+    (lambda f: f["input"]["properties"]["id"].update(personal="yes"), "input.properties.id: personal must be true"),
+    (lambda f: f["input"]["properties"]["id"].update(personal=False), "input.properties.id: personal must be true"),
+    (lambda f: f["input"]["properties"]["embed"]["items"]["anyOf"][1].update(personal=1),
+     "input.properties.embed.items.anyOf[1]: personal must be true"),
+    (lambda f: f.update(output={"schema": {"type": "object", "additionalProperties": False,
+                                           "properties": {"email": {"type": "string", "personal": True}}}}),
+     "output.schema.properties.email: personal marks an input argument, not an output field"),
+], ids=["root", "not_a_boolean", "false", "nested", "output"])
+def test_misplaced_personal_is_refused(mutate, message):
+    description = _load(SELLSY)
+    mutate(_get_estimate(description))
+    with pytest.raises(DescriptionError, match=re.escape(f"function get_estimate: {message}")):
+        check(description, SELLSY)
+
+
 # --- Règle 11 : le délai propre à une fonction ---------------------------------------
 
 
