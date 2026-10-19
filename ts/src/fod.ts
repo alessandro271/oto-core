@@ -693,6 +693,7 @@ export const urbanStartRegulationIngestion = defineFunction({
     body: {},
     headers: {},
   },
+  async: { collect: "fod.urban_get_regulation_ingestion", jobId: { from: "idurba", to: "idurba" } },
   cost: { per: "request" },
 })
 
@@ -1249,7 +1250,7 @@ export const connector = defineConnector({
   name: "fod",
   label: "France Open Data",
   namespace: "fod",
-  version: "1.2.0",
+  version: "1.3.0",
   apiVersion: "france-opendata-service 6f69e80 (routes unversioned)",
   baseUrl: "https://data.oto.zone",
   auth: {"kind": "bearer", "token": "api_key"},

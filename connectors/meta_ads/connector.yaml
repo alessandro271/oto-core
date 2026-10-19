@@ -9,7 +9,7 @@ connector:
   name: meta_ads
   label: Meta Ads
   namespace: meta_ads
-  version: 1.0.0
+  version: 1.1.0
   api_version: v25.0
   base_url: https://graph.facebook.com/v25.0
   auth:
@@ -283,6 +283,8 @@ functions:
               time_increment: time_increment, breakdowns: breakdowns,
               action_attribution_windows: action_attribution_windows, filtering: filtering,
               sort: sort }
+    # The report's id comes back as report_run_id (insights reference, asynchronous jobs).
+    async: { collect: get_report_status, job_id: { from: report_run_id, to: report_run_id } }
 
   - name: get_report_status
     class: read

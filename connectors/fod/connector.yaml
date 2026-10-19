@@ -22,7 +22,7 @@ connector:
   name: fod
   label: France Open Data
   namespace: fod
-  version: 1.2.0
+  version: 1.3.0
   api_version: "france-opendata-service 6f69e80 (routes unversioned)"
   base_url: https://data.oto.zone
   auth:
@@ -580,6 +580,8 @@ functions:
       method: POST
       path: "/api/reglements/{idurba}/ingestion"
     cost: { per: request }
+    # The state that comes back at once names the plan, idurba, which also reads the ingestion state.
+    async: { collect: urban_get_regulation_ingestion, job_id: { from: idurba, to: idurba } }
 
   - name: urban_get_regulation_ingestion
     class: read

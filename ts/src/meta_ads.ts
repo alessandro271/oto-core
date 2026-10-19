@@ -345,6 +345,7 @@ export const startInsightsReport = defineFunction({
     body: {"level": "level", "fields": "fields", "date_preset": "date_preset", "time_range": "time_range", "time_increment": "time_increment", "breakdowns": "breakdowns", "action_attribution_windows": "action_attribution_windows", "filtering": "filtering", "sort": "sort"},
     headers: {},
   },
+  async: { collect: "meta_ads.get_report_status", jobId: { from: "report_run_id", to: "report_run_id" } },
 })
 
 export const getReportStatus = defineFunction({
@@ -419,7 +420,7 @@ export const connector = defineConnector({
   name: "meta_ads",
   label: "Meta Ads",
   namespace: "meta_ads",
-  version: "1.0.0",
+  version: "1.1.0",
   apiVersion: "v25.0",
   baseUrl: "https://graph.facebook.com/v25.0",
   auth: {"kind": "bearer", "token": "access_token"},

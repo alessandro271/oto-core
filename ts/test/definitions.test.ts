@@ -137,4 +137,20 @@ describe("generated definitions", () => {
     if (setting.default !== undefined) expect(setting.choices).toContain(setting.default)
     expect(connector.baseUrl).toBeUndefined()
   })
+
+  const asyncJobs = functions.flatMap(([name, connector, fn]) => (fn.async ? [[name, connector, fn.async] as const] : []))
+  it.each(asyncJobs)("%s: the job is collected by a read function of the connector whose only required argument is the job id", (name, connector, job) => {
+    const collect = connector.functions.find((fn) => fn.name === job.collect)
+    expect(collect?.class).toBe("read")
+    expect(collect?.name).not.toBe(name)
+    expect(collect?.schema.required).toEqual([job.jobId.to])
+  })
+
+  it("should give each item cost two required list arguments", () => {
+    for (const [name, , fn] of functions) {
+      if (fn.cost?.per !== "item") continue
+      const lists = [fn.cost.items, ...(fn.cost.times === undefined ? [] : [fn.cost.times])]
+      for (const argument of lists) expect(fn.schema.required, name).toContain(argument)
+    }
+  })
 })

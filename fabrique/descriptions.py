@@ -60,7 +60,20 @@ pas dire :
    jamais lue) ;
 11. le délai propre à une fonction (`timeout_s`) remplace celui du connecteur pour
    chacun de ses appels, plus court ou plus long ; il n'est jamais égal au délai du
-   connecteur (déclaré, ou 30 s par défaut) : il ne dirait rien.
+   connecteur (déclaré, ou 30 s par défaut) : il ne dirait rien ;
+12. le coût (`cost`) : `items` et `times` (`per: item`) nomment deux arguments
+   distincts de l'entrée, des listes (`type: array`) requises d'au moins un élément
+   (`minItems` d'un ou plus), de sorte que le pire cas se calcule toujours, jamais
+   nul ni deviné ; une fonction paginée ne coûte ni à l'élément ni à la quantité
+   relue (`settle`) : chaque page est une requête, et une quantité lue dans une seule
+   réponse ne dirait pas celle de l'appel ;
+13. le travail asynchrone (`async`) : `collect` nomme une autre fonction de lecture du
+   connecteur, appelée par `call`, qui n'est pas elle-même asynchrone ; `job_id.to`
+   en est le seul argument requis (la relève se fait sans rien d'autre que
+   l'identifiant du travail) ; quand le coût se règle (`settle`), la quantité se lit
+   dans les réponses de la relève : elle n'est pas paginée et ne déclare pas de
+   `settle` à elle ; le délai de relève (`within_s`, exigé par le schéma dans ce cas)
+   est plus long que le délai de la soumission, quand il est déclaré.
 
 Un fichier fautif lève `DescriptionError`, qui nomme le fichier, la fonction et la
 règle : la fabrique ne génère alors rien.
@@ -254,6 +267,71 @@ def check_timeout(connector: dict, function: dict, where: str) -> None:
     if own is not None and own == connector.get("timeout_s", DEFAULT_TIMEOUT_S):
         raise DescriptionError(
             f"{where}: function {function['name']}: timeout_s {own} is the connector's timeout: declare none"
+        )
+
+
+def _check_cost_list(function: dict, key: str, where: str) -> None:
+    """Un argument que le coût compte : une liste requise, d'au moins un élément."""
+    argument = function["cost"][key]
+    schema = function["input"]["properties"].get(argument)
+    if schema is None:
+        raise DescriptionError(f"{where}: function {function['name']}: cost.{key} names {argument!r}, which is not an input argument")
+    listed = schema.get("type") == "array" and isinstance(schema.get("minItems"), int) and schema["minItems"] >= 1
+    if not listed or argument not in function["input"].get("required", []):
+        raise DescriptionError(
+            f"{where}: function {function['name']}: cost.{key} {argument!r} must be a required list argument "
+            "(type: array, minItems 1 or more), so that the worst case is never zero nor guessed"
+        )
+
+
+def check_cost(function: dict, where: str) -> None:
+    """Règle 12 : le coût à l'élément compte des listes requises et non vides, distinctes ; ni l'élément ni la quantité
+    relue sur une fonction paginée."""
+    cost = function.get("cost")
+    if cost is None:
+        return
+    name = function["name"]
+    if cost["per"] == "item":
+        _check_cost_list(function, "items", where)
+        if "times" in cost:
+            if cost["times"] == cost["items"]:
+                raise DescriptionError(f"{where}: function {name}: cost.times names the items argument {cost['items']!r} again")
+            _check_cost_list(function, "times", where)
+    if "pagination" in function and (cost["per"] == "item" or "settle" in cost):
+        raise DescriptionError(
+            f"{where}: function {name}: a paginated function costs per request or per page, without settle: "
+            "each page is a request, and one response does not tell the quantity of the call"
+        )
+
+
+def check_async(data: dict, function: dict, where: str) -> None:
+    """Règle 13 : la relève d'un travail asynchrone est une autre lecture du connecteur, appelable avec l'identifiant du
+    travail seul ; une quantité réglée se lit dans ses réponses, dans le délai de relève."""
+    declared = function.get("async")
+    if declared is None:
+        return
+    name = function["name"]
+    collect = next((f for f in data["functions"] if f["name"] == declared["collect"]), None)
+    if collect is None or collect is function:
+        raise DescriptionError(f"{where}: function {name}: async.collect names {declared['collect']!r}, which is not another function of the connector")
+    if collect["class"] != "read" or "call" not in collect or "async" in collect:
+        raise DescriptionError(
+            f"{where}: function {name}: async.collect {collect['name']!r} must be a read function with a call, not asynchronous itself"
+        )
+    to = declared["job_id"]["to"]
+    if collect["input"].get("required", []) != [to] or to not in collect["input"]["properties"]:
+        raise DescriptionError(
+            f"{where}: function {name}: async.job_id.to {to!r} must be the only required argument of {collect['name']!r}"
+        )
+    timeout = function.get("timeout_s", data["connector"].get("timeout_s", DEFAULT_TIMEOUT_S))
+    if "within_s" in declared and declared["within_s"] <= timeout:
+        raise DescriptionError(
+            f"{where}: function {name}: async.within_s {declared['within_s']} must exceed the timeout of the submission ({timeout} s)"
+        )
+    if "settle" in function.get("cost", {}) and ("pagination" in collect or "settle" in collect.get("cost", {})):
+        raise DescriptionError(
+            f"{where}: function {name}: its quantity is read in the responses of {collect['name']!r}, "
+            "which must be neither paginated nor settled on its own"
         )
 
 
@@ -566,6 +644,8 @@ def check(data: dict, path: pathlib.Path) -> Description:
         check_checks(function, where)
         check_act(function, where)
         check_timeout(data["connector"], function, where)
+        check_cost(function, where)
+        check_async(data, function, where)
     names = [function["name"] for function in data["functions"]]
     twice = sorted({n for n in names if names.count(n) > 1})
     if twice:

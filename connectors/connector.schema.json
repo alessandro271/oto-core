@@ -48,6 +48,11 @@
       "type": "string",
       "minLength": 1
     },
+    "dotted_path": {
+      "description": "Dotted path of a value in a JSON response, a list index as a number: credits.remaining, accounts.0.balance. Each segment is non-empty, without space.",
+      "type": "string",
+      "pattern": "^[^.\\s]+(\\.[^.\\s]+)*$"
+    },
     "timeout_s": {
       "description": "A timeout in seconds: the connector's, or one function's. At most 300, the ceiling the host package of oto 2 runs.",
       "type": "integer",
@@ -340,11 +345,7 @@
               "additionalProperties": false,
               "required": ["path", "min", "unit"],
               "properties": {
-                "path": {
-                  "description": "Dotted path of the balance in the response, a list index as a number: credits.remaining.",
-                  "type": "string",
-                  "pattern": "^[^.\\s]+(\\.[^.\\s]+)*$"
-                },
+                "path": { "description": "Dotted path of the balance in the response.", "$ref": "#/$defs/dotted_path" },
                 "min": { "description": "Threshold: a balance under it is not healthy.", "type": "number", "minimum": 0 },
                 "unit": { "description": "What the balance counts, as the vendor names it: credits, requests, EUR.", "$ref": "#/$defs/text" }
               }
@@ -624,6 +625,31 @@
           "description": "Timeout of one call of this function, in seconds, in place of the connector's: longer or shorter, never equal to it. Each page of a paginated read is one call.",
           "$ref": "#/$defs/timeout_s"
         },
+        "async": {
+          "description": "The function submits a job whose result is collected later by another function of the connector, collect, called with the job id read in the submission's response. With cost.settle, the real quantity is read in the collect's responses, within within_s.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["collect", "job_id"],
+          "properties": {
+            "collect": { "description": "The read function that collects the job: its state, and its result.", "$ref": "#/$defs/identifier" },
+            "job_id": {
+              "description": "The job id: read at from in the submission's response, passed to the collect function as its argument to.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["from", "to"],
+              "properties": {
+                "from": { "$ref": "#/$defs/dotted_path" },
+                "to": { "description": "The only required argument of the collect function.", "$ref": "#/$defs/identifier" }
+              }
+            },
+            "within_s": {
+              "description": "Delay of collection, in seconds after the submission: by then the job is done and its quantity readable. At most one day. Required with cost.settle.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 86400
+            }
+          }
+        },
         "scopes": {
           "description": "Only in a connector with access levels, where it is required: the scopes this function requires, all of them. It is served at a level when each is a scope of the level or implied by one. class stays: it says what the function does.",
           "$ref": "#/$defs/scope_list"
@@ -740,13 +766,45 @@
           }
         },
         "cost": {
-          "description": "Unit counted against the quota.",
+          "description": "What a call costs. Before the call, its worst case from the arguments: one per request sent (request, page: each page of a paginated read is a request), or, per item, the size of the items argument times the size of the times argument. After the call, settle reads the real quantity in the response. Both count the same unit.",
           "type": "object",
           "additionalProperties": false,
           "required": ["per"],
           "properties": {
-            "per": { "enum": ["request", "page"] }
-          }
+            "per": { "enum": ["request", "page", "item"] },
+            "items": {
+              "description": "per: item only, required there: the list argument each element of which counts once. Required in the input, at least one element.",
+              "$ref": "#/$defs/identifier"
+            },
+            "times": {
+              "description": "per: item only: another list argument whose size multiplies the count of items. Required in the input, at least one element.",
+              "$ref": "#/$defs/identifier"
+            },
+            "unit": {
+              "description": "What the quantity counts, as the vendor names it: credits, contacts, fields. Required per item or with settle; absent, requests (per: request) or pages (per: page).",
+              "$ref": "#/$defs/text"
+            },
+            "settle": {
+              "description": "The real quantity of the call, read to settle it: a finite JSON number of zero or more at path, in unit, in the response of the call, or of its collect function when it is asynchronous. Not on a paginated function.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path"],
+              "properties": {
+                "path": { "$ref": "#/$defs/dotted_path" }
+              }
+            }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "per": { "const": "item" } } },
+              "then": { "required": ["items", "unit"] },
+              "else": { "not": { "anyOf": [{ "required": ["items"] }, { "required": ["times"] }] } }
+            },
+            {
+              "if": { "required": ["settle"] },
+              "then": { "required": ["unit"] }
+            }
+          ]
         },
         "confirm": {
           "type": "object",
@@ -769,6 +827,11 @@
         {
           "if": { "properties": { "class": { "const": "sensitive" } } },
           "then": { "required": ["confirm"] }
+        },
+        {
+          "$comment": "An asynchronous function whose cost is settled says within how long its quantity is collected.",
+          "if": { "required": ["async", "cost"], "properties": { "cost": { "required": ["settle"] } } },
+          "then": { "properties": { "async": { "required": ["within_s"] } } }
         }
       ]
     },

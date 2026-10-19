@@ -756,3 +756,124 @@ def test_linkedin_company_page_has_its_own_timeout():
     company = module.split("export const getCompany = ")[1].split("export const ")[0]
     assert "  timeoutMs: 60000,\n" in company
     assert module.count("  timeoutMs: ") == 2 and "  timeoutMs: 120000,\n" in module
+
+
+# --- Règle 12 : le coût, pire cas et quantité relue ------------------------------------
+
+
+def _with_lists(d):
+    """`get_estimate` avec deux listes requises d'au moins un élément : de quoi coûter à l'élément."""
+    fn = _get_estimate(d)
+    fn["input"]["required"] = ["id", "embed", "fields"]
+    fn["input"]["properties"]["embed"]["minItems"] = 1
+    fn["input"]["properties"]["fields"] = {**fn["input"]["properties"]["fields"], "minItems": 1}
+    fn["examples"][0]["input"]["fields"] = ["id"]
+    return fn
+
+
+def test_cost_per_item_passes_and_is_carried():
+    description = _load(SELLSY)
+    _with_lists(description)["cost"] = {"per": "item", "items": "embed", "times": "fields", "unit": "fields",
+                                        "settle": {"path": "meta.found"}}
+    source = connector_module(check(description, SELLSY)).source
+    assert '  cost: { per: "item", items: "embed", times: "fields", unit: "fields", settle: { path: "meta.found" } },\n' in source
+
+
+def test_cost_without_new_keys_is_carried_as_before():
+    source = function_source("sellsy", _get_estimate(_load(SELLSY)))
+    assert '  cost: { per: "request" },\n' in source
+    description = _load(SELLSY)
+    _get_estimate(description)["cost"] = {"per": "request", "unit": "credits", "settle": {"path": "credits_used"}}
+    source = function_source("sellsy", _get_estimate(check(description, SELLSY).data))
+    assert '  cost: { per: "request", unit: "credits", settle: { path: "credits_used" } },\n' in source
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda d: _with_lists(d)["cost"].update(per="item", items="nope", unit="u"), "cost.items names 'nope', which is not an input argument"),
+    (lambda d: _with_lists(d)["cost"].update(per="item", items="id", unit="u"), "cost.items 'id' must be a required list argument"),
+    (lambda d: (_with_lists(d)["input"].update(required=["id", "fields"]), _get_estimate(d)["cost"].update(per="item", items="embed", unit="u")),
+     "cost.items 'embed' must be a required list argument"),
+    (lambda d: (_with_lists(d)["input"]["properties"]["embed"].pop("minItems"), _get_estimate(d)["cost"].update(per="item", items="embed", unit="u")),
+     "cost.items 'embed' must be a required list argument"),
+    (lambda d: (_with_lists(d)["input"]["properties"]["embed"].update(minItems=0), _get_estimate(d)["cost"].update(per="item", items="embed", unit="u")),
+     "cost.items 'embed' must be a required list argument"),
+    (lambda d: _with_lists(d)["cost"].update(per="item", items="embed", times="embed", unit="u"), "cost.times names the items argument 'embed' again"),
+    (lambda d: (_with_lists(d)["input"].update(required=["id", "embed"]), _get_estimate(d)["cost"].update(per="item", items="embed", times="fields", unit="u")),
+     "cost.times 'fields' must be a required list argument"),
+    (lambda d: (d["functions"][0]["input"].update(required=["fields"]), d["functions"][0]["input"]["properties"].update(
+        fields={"type": "array", "items": {"type": "string"}, "minItems": 1}), d["functions"][0]["examples"][0]["input"].update(fields=["id"]),
+                d["functions"][0].update(cost={"per": "item", "items": "fields", "unit": "u"})),
+     "a paginated function costs per request or per page, without settle"),
+    (lambda d: d["functions"][0].update(cost={"per": "page", "unit": "u", "settle": {"path": "used"}}),
+     "a paginated function costs per request or per page, without settle"),
+], ids=["items_unknown", "items_not_a_list", "items_not_required", "items_without_min", "items_min_zero", "times_is_items",
+        "times_not_required", "item_paginated", "settle_paginated"])
+def test_cost_rule_refuses(mutate, message):
+    description = _load(SELLSY)
+    mutate(description)
+    with pytest.raises(DescriptionError, match=re.escape(message)):
+        check(description, SELLSY)
+
+
+@pytest.mark.parametrize("cost", [
+    {"per": "request", "unit": "credits", "settle": {"path": "used"}},
+    {"per": "page"},
+], ids=["settled", "page"])
+def test_balance_probe_refuses_any_cost(cost):
+    """Règle 5, quel que soit le coût : on ne paie pas pour savoir si l'on peut payer."""
+    description = _load(PENNYLANE)
+    _fn(description, "get_company")["cost"] = cost
+    description["connector"]["probe"]["balance"] = {"path": "credits.remaining", "min": 1, "unit": "credits"}
+    with pytest.raises(DescriptionError, match=re.escape("reads a balance, so it must declare no cost")):
+        check(description, PENNYLANE)
+
+
+# --- Règle 13 : le travail asynchrone ----------------------------------------------------
+
+AMPLITUDE = CONNECTORS / "amplitude" / "connector.yaml"
+
+
+def _submit(d):
+    return _fn(d, "request_cohort_download")
+
+
+def test_async_pairs_are_carried():
+    for path, submit, collect, job in [
+        (META_ADS, "startInsightsReport", "meta_ads.get_report_status", "report_run_id"),
+        (AMPLITUDE, "requestCohortDownload", "amplitude.get_cohort_download_status", "request_id"),
+        (CONNECTORS / "fod" / "connector.yaml", "urbanStartRegulationIngestion", "fod.urban_get_regulation_ingestion", "idurba"),
+    ]:
+        module = connector_module(check(_load(path), path)).source
+        block = module.split(f"export const {submit} = ")[1].split("export const ")[0]
+        assert f'  async: {{ collect: "{collect}", jobId: {{ from: "{job}", to: "{job}" }} }},\n' in block
+        assert module.count("  async: ") == 1
+
+
+def test_async_settled_carries_its_delay():
+    description = _load(AMPLITUDE)
+    _submit(description).update(cost={"per": "request", "unit": "downloads", "settle": {"path": "used"}})
+    _submit(description)["async"]["within_s"] = 600
+    source = function_source("amplitude", _submit(check(description, AMPLITUDE).data))
+    assert '  async: { collect: "amplitude.get_cohort_download_status", jobId: { from: "request_id", to: "request_id" }, withinMs: 600000 },\n' in source
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda d: _submit(d)["async"].update(collect="nope"), "async.collect names 'nope', which is not another function"),
+    (lambda d: _submit(d)["async"].update(collect="request_cohort_download"), "which is not another function"),
+    (lambda d: _fn(d, "get_cohort_download_status").update({"class": "write"}),
+     "async.collect 'get_cohort_download_status' must be a read function with a call, not asynchronous itself"),
+    (lambda d: _fn(d, "get_cohort_download_status").update({"async": {"collect": "list_cohorts", "job_id": {"from": "a", "to": "b"}}}),
+     "not asynchronous itself"),
+    (lambda d: _submit(d)["async"]["job_id"].update(to="cohort_id"), "async.job_id.to 'cohort_id' must be the only required argument"),
+    (lambda d: _fn(d, "get_cohort_download_status")["input"].update(required=[]), "must be the only required argument"),
+    (lambda d: _submit(d)["async"].update(within_s=60), "async.within_s 60 must exceed the timeout of the submission (60 s)"),
+    (lambda d: (_submit(d).update(cost={"per": "request", "unit": "u", "settle": {"path": "used"}}), _submit(d)["async"].update(within_s=600),
+                _fn(d, "get_cohort_download_status").update(cost={"per": "request", "unit": "u", "settle": {"path": "used"}})),
+     "which must be neither paginated nor settled on its own"),
+], ids=["collect_unknown", "collect_itself", "collect_not_a_read", "collect_asynchronous", "to_not_required",
+        "to_not_the_only_one", "within_not_beyond_timeout", "collect_settled"])
+def test_async_rule_refuses(mutate, message):
+    description = _load(AMPLITUDE)
+    mutate(description)
+    with pytest.raises(DescriptionError, match=re.escape(message)):
+        check(description, AMPLITUDE)

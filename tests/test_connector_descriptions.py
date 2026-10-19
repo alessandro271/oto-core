@@ -615,3 +615,90 @@ def test_connector_timeout_has_the_same_bounds():
     description["connector"]["timeout_s"] = 301
     with pytest.raises(ValidationError):
         _validate(description)
+
+
+# --- Coût : pire cas, quantité relue ---------------------------------------------------
+
+
+def _cost(d, **cost):
+    """Le coût de `get_estimate` ; le schéma seul : l'argument nommé et sa forme sont la règle 12 de la fabrique."""
+    d["functions"][1]["cost"] = cost
+
+
+@pytest.mark.parametrize("cost", [
+    {"per": "request"},
+    {"per": "page"},
+    {"per": "request", "unit": "credits"},
+    {"per": "request", "unit": "credits", "settle": {"path": "credits_used"}},
+    {"per": "item", "items": "embed", "unit": "credits"},
+    {"per": "item", "items": "embed", "times": "fields", "unit": "fields", "settle": {"path": "data.0.found"}},
+], ids=["request", "page", "request_unit", "request_settle", "item", "item_times_settle"])
+def test_cost_base_is_valid(cost):
+    """Les variantes ci-dessous partent d'une description valide : chacune n'échoue que par sa faute."""
+    description = _sellsy()
+    _cost(description, **cost)
+    _validate(description)
+
+
+@pytest.mark.parametrize("cost", [
+    {"per": "call"},
+    {"per": "item", "unit": "credits"},
+    {"per": "item", "items": "embed"},
+    {"per": "request", "items": "embed"},
+    {"per": "request", "times": "fields"},
+    {"per": "item", "times": "fields", "unit": "credits"},
+    {"per": "request", "settle": {"path": "credits_used"}},
+    {"per": "request", "unit": "credits", "settle": {}},
+    {"per": "request", "unit": "credits", "settle": {"path": ".credits"}},
+    {"per": "request", "unit": "credits", "settle": {"path": "credits used"}},
+    {"per": "request", "unit": "credits", "settle": {"path": "credits_used", "max": 3}},
+    {"per": "request", "unit": ""},
+    {"per": "item", "items": "Embed", "unit": "credits"},
+    {"per": "request", "amount": 2},
+], ids=["unknown_per", "item_without_items", "item_without_unit", "items_per_request", "times_per_request",
+        "times_without_items", "settle_without_unit", "settle_without_path", "settle_leading_dot", "settle_space",
+        "settle_unknown_key", "empty_unit", "items_not_an_identifier", "unknown_key"])
+def test_invalid_cost_is_rejected(cost):
+    description = _sellsy()
+    _cost(description, **cost)
+    with pytest.raises(ValidationError):
+        _validate(description)
+
+
+# --- Travail asynchrone ----------------------------------------------------------------
+
+
+def _async(d, **declared):
+    """`list_estimates` soumet, `get_estimate` relève ; le schéma seul : la relève elle-même est la règle 13."""
+    d["functions"][0]["async"] = {"collect": "get_estimate", "job_id": {"from": "data.0.id", "to": "id"}, **declared}
+
+
+def test_async_base_is_valid():
+    description = _sellsy()
+    _async(description)
+    _validate(description)
+    _async(description, within_s=86400)
+    _validate(description)
+    description["functions"][0]["cost"] = {"per": "request", "unit": "credits", "settle": {"path": "used"}}
+    _async(description, within_s=600)
+    _validate(description)
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda d: _async(d, within_s=0),
+    lambda d: _async(d, within_s=86401),
+    lambda d: _async(d, within_s=1.5),
+    lambda d: _async(d, within_s="600"),
+    lambda d: _async(d, poll_s=30),
+    lambda d: _async(d, job_id={"from": "id"}),
+    lambda d: _async(d, job_id={"from": "data..id", "to": "id"}),
+    lambda d: _async(d, job_id={"from": "id", "to": "id", "as": "text"}),
+    lambda d: d["functions"][0].update({"async": {"job_id": {"from": "id", "to": "id"}}}),
+    lambda d: (_async(d), d["functions"][0].update(cost={"per": "request", "unit": "credits", "settle": {"path": "used"}})),
+], ids=["within_zero", "within_above_a_day", "within_not_an_integer", "within_text", "unknown_key", "job_id_without_to",
+        "job_id_empty_segment", "job_id_unknown_key", "without_collect", "settled_without_within"])
+def test_invalid_async_is_rejected(mutate):
+    description = _sellsy()
+    mutate(description)
+    with pytest.raises(ValidationError):
+        _validate(description)

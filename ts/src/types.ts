@@ -268,6 +268,33 @@ export type Check = {
  */
 export type Expectation = { readonly kind: "non_empty"; readonly refusal: string; readonly path: string }
 
+/** Où lire, dans la réponse d'un appel, la quantité réelle qu'il a coûté : un nombre JSON fini, positif ou nul, au chemin pointé `path`. */
+export type CostSettle = { readonly path: string }
+
+/**
+ * Ce que coûte un appel. Avant lui, son pire cas, calculé sur les arguments : `request` et `page`, une unité par requête
+ * envoyée (une, ou chaque page d'une lecture paginée avec `all_pages`, jusqu'à `max_pages`) ; `item`, la taille de la
+ * liste `items` fois celle de la liste `times` (une si absente), deux arguments requis d'au moins un élément, jamais sur
+ * une fonction paginée. Après lui, `settle` : la quantité réelle, lue dans sa réponse ; absente ou illisible, on règle le
+ * pire cas. Les deux comptent `unit`, telle que l'éditeur la nomme (`credits`), exigée par `item` et `settle` ; absente,
+ * des requêtes (`request`) ou des pages (`page`).
+ */
+export type Cost =
+  | { readonly per: "request" | "page"; readonly unit?: string; readonly settle?: CostSettle }
+  | { readonly per: "item"; readonly items: string; readonly times?: string; readonly unit: string; readonly settle?: CostSettle }
+
+/**
+ * Une fonction qui soumet un travail, relevé plus tard par `collect` (nom qualifié, une lecture du connecteur dont le seul
+ * argument requis est `jobId.to`), appelée avec l'identifiant lu au chemin pointé `jobId.from` de la réponse de la
+ * soumission. `withinMs` : le délai de relève après la soumission, au-delà duquel le travail est fini et sa quantité
+ * lisible ; exigé quand le coût se règle (`settle`), dont la quantité se lit alors dans les réponses de la relève.
+ */
+export type AsyncJob = {
+  readonly collect: string
+  readonly jobId: { readonly from: string; readonly to: string }
+  readonly withinMs?: number
+}
+
 export type ConnectorFunction = {
   /** `<connecteur>.<fonction>`. */
   readonly name: string
@@ -299,10 +326,11 @@ export type ConnectorFunction = {
    * (chaque page d'une lecture paginée), plus court ou plus long, jamais égal. Absent : celui du connecteur.
    */
   readonly timeoutMs?: number
+  /** Présent pour une fonction qui soumet un travail relevé plus tard (`AsyncJob`). */
+  readonly async?: AsyncJob
   readonly pagination?: Pagination
   readonly output?: Output
-  /** Unité décomptée du quota. */
-  readonly cost?: { readonly per: "request" | "page" }
+  readonly cost?: Cost
   /** Gabarit du résumé montré avant d'exécuter une fonction sensible, avec des `{param}`. */
   readonly confirm?: { readonly summary: string }
 }

@@ -180,6 +180,8 @@ def function_source(connector: str, function: dict) -> str:
     entries.append(("request", _request(function["call"])))
     if "timeout_s" in function:
         entries.append(("timeoutMs", js(function["timeout_s"] * 1000)))
+    if "async" in function:
+        entries.append(("async", _async(connector, function["async"])))
     if "pagination" in function:
         entries.append(("pagination", _pagination(function["pagination"])))
     if "output" in function:
@@ -189,10 +191,30 @@ def function_source(connector: str, function: dict) -> str:
             out.append(("schema", js(output["schema"])))
         entries.append(("output", "{ " + ", ".join(f"{k}: {v}" for k, v in out) + " }"))
     if "cost" in function:
-        entries.append(("cost", "{ per: " + js(function["cost"]["per"]) + " }"))
+        entries.append(("cost", _cost(function["cost"])))
     if "confirm" in function:
         entries.append(("confirm", "{ summary: " + js(function["confirm"]["summary"]) + " }"))
     return f"export const {camel(function['name'])} = defineFunction({_object(entries, 0)})\n"
+
+
+def _cost(cost: dict) -> str:
+    """Le coût d'une fonction, ses clés dans l'ordre du format, seulement celles qu'elle déclare."""
+    parts = [f"{key}: {js(cost[key])}" for key in ("per", "items", "times", "unit") if key in cost]
+    if "settle" in cost:
+        parts.append("settle: { path: " + js(cost["settle"]["path"]) + " }")
+    return "{ " + ", ".join(parts) + " }"
+
+
+def _async(connector: str, declared: dict) -> str:
+    """Le travail asynchrone : la relève qualifiée comme la sonde, l'identifiant du travail, le délai en millisecondes."""
+    job = declared["job_id"]
+    parts = [
+        "collect: " + js(f"{connector}.{declared['collect']}"),
+        "jobId: { from: " + js(job["from"]) + ", to: " + js(job["to"]) + " }",
+    ]
+    if "within_s" in declared:
+        parts.append("withinMs: " + js(declared["within_s"] * 1000))
+    return "{ " + ", ".join(parts) + " }"
 
 
 def _check(check: dict) -> str:
