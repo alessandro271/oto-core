@@ -117,6 +117,7 @@ export const getCompany = defineFunction({
     body: {},
     headers: {},
   },
+  timeoutMs: 60000,
 })
 
 export const listRelations = defineFunction({
@@ -370,7 +371,7 @@ export const connector = defineConnector({
   name: "linkedin_unipile",
   label: "LinkedIn (Unipile)",
   namespace: "linkedin_unipile",
-  version: "1.0.0",
+  version: "1.1.0",
   apiVersion: "v2",
   baseUrl: "https://api.unipile.com/v2/{account_id}",
   auth: {"kind": "api_key", "in": "header", "name": "X-API-KEY", "key": "api_key"},

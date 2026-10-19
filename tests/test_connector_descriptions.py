@@ -585,3 +585,33 @@ def test_invalid_probe_balance_is_rejected(mutate):
     mutate(description)
     with pytest.raises(ValidationError):
         _validate(description)
+
+
+# --- Délai propre à une fonction -------------------------------------------------------
+
+
+def test_function_timeout_base_is_valid():
+    """Même type et mêmes bornes que le délai du connecteur ; l'égalité avec lui est une règle de la fabrique."""
+    description = _sellsy()
+    description["functions"][0]["timeout_s"] = 1
+    _validate(description)
+    description["functions"][0]["timeout_s"] = 300
+    _validate(description)
+
+
+@pytest.mark.parametrize("value", [0, -5, 1.5, "60", None, 301],
+                         ids=["zero", "negative", "not_an_integer", "text", "null", "above_300"])
+def test_invalid_function_timeout_is_rejected(value):
+    description = _sellsy()
+    description["functions"][0]["timeout_s"] = value
+    with pytest.raises(ValidationError):
+        _validate(description)
+
+
+def test_connector_timeout_has_the_same_bounds():
+    description = _sellsy()
+    description["connector"]["timeout_s"] = 300
+    _validate(description)
+    description["connector"]["timeout_s"] = 301
+    with pytest.raises(ValidationError):
+        _validate(description)

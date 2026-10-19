@@ -294,6 +294,11 @@ export type ConnectorFunction = {
   readonly checks?: readonly Check[]
   readonly expect?: readonly Expectation[]
   readonly request: RequestSpec
+  /**
+   * Délai propre à la fonction, en millisecondes : il remplace `timeoutMs` du connecteur pour chacun de ses appels
+   * (chaque page d'une lecture paginée), plus court ou plus long, jamais égal. Absent : celui du connecteur.
+   */
+  readonly timeoutMs?: number
   readonly pagination?: Pagination
   readonly output?: Output
   /** Unité décomptée du quota. */

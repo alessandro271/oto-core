@@ -714,3 +714,45 @@ def test_account_signal_rule_refuses(mutate, message):
     mutate(description)
     with pytest.raises(DescriptionError, match=re.escape(message)):
         check(description, SELLSY)
+
+
+# --- Règle 11 : le délai propre à une fonction ---------------------------------------
+
+
+@pytest.mark.parametrize("own, connector", [(300, None), (10, None), (60, 120), (300, 120)],
+                         ids=["longer_than_default", "shorter_than_default", "shorter", "longer"])
+def test_function_timeout_passes_and_is_carried(own, connector):
+    description = _load(SELLSY)
+    if connector is None:
+        description["connector"].pop("timeout_s", None)
+    else:
+        description["connector"]["timeout_s"] = connector
+    _get_estimate(description)["timeout_s"] = own
+    source = connector_module(check(description, SELLSY)).source
+    assert f"  timeoutMs: {own * 1000},\n" in source
+    assert f"  timeoutMs: {(connector or 30) * 1000},\n" in source
+
+
+def test_function_without_timeout_carries_none():
+    source = function_source("sellsy", _get_estimate(_load(SELLSY)))
+    assert "timeoutMs" not in source
+
+
+@pytest.mark.parametrize("connector", [None, 120], ids=["default", "declared"])
+def test_function_timeout_equal_to_the_connector_is_refused(connector):
+    description = _load(SELLSY)
+    if connector is None:
+        description["connector"].pop("timeout_s", None)
+    else:
+        description["connector"]["timeout_s"] = connector
+    _get_estimate(description)["timeout_s"] = connector or 30
+    with pytest.raises(DescriptionError, match=re.escape(
+            f"function get_estimate: timeout_s {connector or 30} is the connector's timeout: declare none")):
+        check(description, SELLSY)
+
+
+def test_linkedin_company_page_has_its_own_timeout():
+    module = connector_module(check(_load(LINKEDIN), LINKEDIN)).source
+    company = module.split("export const getCompany = ")[1].split("export const ")[0]
+    assert "  timeoutMs: 60000,\n" in company
+    assert module.count("  timeoutMs: ") == 2 and "  timeoutMs: 120000,\n" in module

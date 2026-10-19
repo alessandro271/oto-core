@@ -57,7 +57,10 @@ pas dire :
    (un débit dépassé n'est pas un crédit épuisé) ; une entrée qui marque le compte
    n'est pas rejouable ; dans une même table, une entrée à condition ne vient pas
    après une entrée sans condition qui partage un de ses statuts (elle ne serait
-   jamais lue).
+   jamais lue) ;
+11. le délai propre à une fonction (`timeout_s`) remplace celui du connecteur pour
+   chacun de ses appels, plus court ou plus long ; il n'est jamais égal au délai du
+   connecteur (déclaré, ou 30 s par défaut) : il ne dirait rien.
 
 Un fichier fautif lève `DescriptionError`, qui nomme le fichier, la fonction et la
 règle : la fabrique ne génère alors rien.
@@ -77,6 +80,8 @@ CONNECTORS = REPO / "connectors"
 SCHEMA_PATH = CONNECTORS / "connector.schema.json"
 
 PATH_PARAM = re.compile(r"\{([^{}]*)\}")
+# Le délai d'un appel quand le connecteur n'en déclare pas (le `default` du schéma).
+DEFAULT_TIMEOUT_S = 30
 AUTH_REFERENCES = ("key", "token", "username", "password", "client_id", "client_secret")
 PLACES = ("query", "body", "headers")
 # Ce qui précède l'identité d'un compte dans une adresse : le schéma et l'hôte (ou une adresse libre en tête), puis `/`.
@@ -241,6 +246,15 @@ def check_act(function: dict, where: str) -> None:
         raise DescriptionError(f"{where}: function {function['name']}: a sensitive function cannot declare act: false")
     if declared is True and function["class"] == "read":
         raise DescriptionError(f"{where}: function {function['name']}: a read function cannot declare act: true")
+
+
+def check_timeout(connector: dict, function: dict, where: str) -> None:
+    """Règle 11 : le délai d'une fonction n'est pas celui du connecteur."""
+    own = function.get("timeout_s")
+    if own is not None and own == connector.get("timeout_s", DEFAULT_TIMEOUT_S):
+        raise DescriptionError(
+            f"{where}: function {function['name']}: timeout_s {own} is the connector's timeout: declare none"
+        )
 
 
 def _statuses(entry: dict) -> list[int]:
@@ -551,6 +565,7 @@ def check(data: dict, path: pathlib.Path) -> Description:
         check_constants(data["connector"], function, where)
         check_checks(function, where)
         check_act(function, where)
+        check_timeout(data["connector"], function, where)
     names = [function["name"] for function in data["functions"]]
     twice = sorted({n for n in names if names.count(n) > 1})
     if twice:
