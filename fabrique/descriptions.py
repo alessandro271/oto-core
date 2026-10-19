@@ -741,6 +741,12 @@ def check(data: dict, path: pathlib.Path) -> Description:
     check_schema(data, where)
     if data["connector"]["name"] != path.parent.name:
         raise DescriptionError(f"{where}: connector.name {data['connector']['name']!r} is not the folder name")
+    check_rules(data, where)
+    return Description(path=path, data=data)
+
+
+def check_rules(data: dict, where: str) -> None:
+    """Les règles hors schéma, sur une description déjà validée par le schéma (`check`, et les cas du coût)."""
     check_auth(data["connector"], where)
     check_account_identity(data, where)
     check_settings(data["connector"], where)
@@ -761,7 +767,6 @@ def check(data: dict, path: pathlib.Path) -> Description:
     check_probe(data, where)
     check_access_levels(data, where)
     check_signals(data, where)
-    return Description(path=path, data=data)
 
 
 def load(path: pathlib.Path) -> Description:

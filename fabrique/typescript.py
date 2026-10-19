@@ -211,17 +211,24 @@ def _cost(cost: dict) -> str:
     return "{ " + ", ".join(parts) + " }"
 
 
-def _async(connector: str, declared: dict) -> str:
-    """Le travail asynchrone : la relève qualifiée comme la sonde, l'identifiant du travail, le délai en millisecondes."""
-    job = declared["job_id"]
-    parts = [
-        "collect: " + js(f"{connector}.{declared['collect']}"),
-        "jobId: { from: " + js(job["from"]) + ", to: " + js(job["to"]) + " }",
-    ]
+def collection_fields(connector: str, declared: dict) -> dict:
+    """La relève dans les noms de la sortie : `collect` qualifiée comme la sonde, `within_s` en millisecondes
+    (`withinMs`), `no_deadline` en `noDeadline`. Sert la définition d'une fonction (`async`) et les attendus des cas du
+    coût (`fabrique.cases`), pour qu'une seule conversion les tienne."""
+    fields: dict = {"collect": f"{connector}.{declared['collect']}"}
     if "within_s" in declared:
-        parts.append("withinMs: " + js(declared["within_s"] * 1000))
+        fields["withinMs"] = declared["within_s"] * 1000
     if declared.get("no_deadline") is True:
-        parts.append("noDeadline: true")
+        fields["noDeadline"] = True
+    return fields
+
+
+def _async(connector: str, declared: dict) -> str:
+    """Le travail asynchrone : la relève qualifiée, l'identifiant du travail, le délai en millisecondes."""
+    job = declared["job_id"]
+    fields = collection_fields(connector, declared)
+    parts = ["collect: " + js(fields["collect"]), "jobId: { from: " + js(job["from"]) + ", to: " + js(job["to"]) + " }"]
+    parts += [f"{key}: {js(fields[key])}" for key in ("withinMs", "noDeadline") if key in fields]
     return "{ " + ", ".join(parts) + " }"
 
 
@@ -267,7 +274,8 @@ def _errors(errors: list[dict]) -> str:
     return _list(rows, 1)
 
 
-def connector_module(description: Description) -> Module:
+def connector_module(description: Description, source: str | None = None) -> Module:
+    """Le module d'un connecteur ; `source`, le fichier que nomme son en-tête (sa description par défaut)."""
     data = description.data
     connector = data["connector"]
     name = connector["name"]
@@ -326,8 +334,7 @@ def connector_module(description: Description) -> Module:
         entries.append(("exposure", js(data["exposure"])))
     entries.append(("functions", _list(exported, 1)))
 
-    source = f"connectors/{name}/connector.yaml"
-    head = [HEADER.format(source=source)]
+    head = [HEADER.format(source=source or f"connectors/{name}/connector.yaml")]
     if module.skipped:
         head.append("// Not generated:")
         head += [f"// - {s.function}: {s.reason}" for s in module.skipped]

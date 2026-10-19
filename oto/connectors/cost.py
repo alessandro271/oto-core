@@ -34,6 +34,17 @@ def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
+def _finite(value: Any) -> bool:
+    """A number that a double holds finite, as the host package reads JSON: an integer beyond the range of a double
+    (JavaScript reads Infinity) is not, where `math.isfinite` would raise `OverflowError`."""
+    if not _is_number(value):
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        return False
+
+
 def value_at(value: Any, path: str) -> Any:
     """The value at a dotted path, a list index as digits; `None` when absent."""
     current = value
@@ -104,16 +115,16 @@ def worst_case(connector: str, function: str, args: dict) -> dict | None:
 
 def settled_quantity(connector: str, function: str, args: dict, answers: list) -> dict | None:
     """`{quantity, unit, from, exceeded}` after a successful call. With settle, the first finite number of zero or more
-    at its path in `answers` (`from: response`), else the worst case (`from: unreadable`); without settle, the requests
-    sent (`requests`) or, per item, the worst case (`worst_case`). `exceeded`: a quantity read above the worst case,
-    settled as is and to be reported. `None` without a cost."""
+    (a finite double, as the host reads JSON) at its path in `answers` (`from: response`), else the worst case
+    (`from: unreadable`); without settle, the requests sent (`requests`) or, per item, the worst case (`worst_case`).
+    `exceeded`: a quantity read above the worst case, settled as is and to be reported. `None` without a cost."""
     worst = worst_case(connector, function, args)
     if worst is None:
         return None
     cost = _declared(connector, function)["cost"]
     if "settle" in cost:
         path = cost["settle"]["path"]
-        read = next((v for v in (value_at(a, path) for a in answers) if _is_number(v) and math.isfinite(v) and v >= 0), None)
+        read = next((v for v in (value_at(a, path) for a in answers) if _finite(v) and v >= 0), None)
         if read is None:
             return {**worst, "from": "unreadable", "exceeded": False}
         return {"quantity": read, "unit": worst["unit"], "from": "response", "exceeded": read > worst["quantity"]}
@@ -131,7 +142,7 @@ def collection_of(connector: str, function: str, answer: Any) -> dict | None:
     if job is None:
         return None
     job_id = value_at(answer, job["job_id"]["from"])
-    if not ((isinstance(job_id, str) and job_id) or (_is_number(job_id) and math.isfinite(job_id))):
+    if not ((isinstance(job_id, str) and job_id) or _finite(job_id)):
         raise CostError(f"{_qualified(connector, function)}: the submission answered without its job id at {job['job_id']['from']}.")
     return {
         "function": _qualified(connector, job["collect"]),
