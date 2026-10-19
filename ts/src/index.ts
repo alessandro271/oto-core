@@ -3,6 +3,7 @@ import * as affinity from "./affinity"
 import * as aircall from "./aircall"
 import * as amplitude from "./amplitude"
 import * as claap from "./claap"
+import * as elevenlabs from "./elevenlabs"
 import * as fod from "./fod"
 import * as fullenrich from "./fullenrich"
 import * as gmail from "./gmail"
@@ -17,6 +18,7 @@ import * as metaAds from "./meta_ads"
 import * as microsoft from "./microsoft"
 import * as microsoftApp from "./microsoft_app"
 import * as modjo from "./modjo"
+import * as mux from "./mux"
 import * as nextmotion from "./nextmotion"
 import * as notion from "./notion"
 import * as pappers from "./pappers"
@@ -33,6 +35,7 @@ export { affinity }
 export { aircall }
 export { amplitude }
 export { claap }
+export { elevenlabs }
 export { fod }
 export { fullenrich }
 export { gmail }
@@ -47,6 +50,7 @@ export { metaAds }
 export { microsoft }
 export { microsoftApp }
 export { modjo }
+export { mux }
 export { nextmotion }
 export { notion }
 export { pappers }
@@ -66,6 +70,7 @@ export const connectors: readonly Connector[] = [
   aircall.connector,
   amplitude.connector,
   claap.connector,
+  elevenlabs.connector,
   fod.connector,
   fullenrich.connector,
   gmail.connector,
@@ -80,6 +85,7 @@ export const connectors: readonly Connector[] = [
   microsoft.connector,
   microsoftApp.connector,
   modjo.connector,
+  mux.connector,
   nextmotion.connector,
   notion.connector,
   pappers.connector,
