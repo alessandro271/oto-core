@@ -10,6 +10,7 @@ import requests
 
 from ..common.credentials import require
 from ..common import FieldFilter, raise_for_upstream
+from .pacing import DEFAULT_MIN_INTERVAL_S, SHARED_PACER, FolkPacer
 
 
 # RELATION fields: Folk does not accept text operators on them (`like` → 422
@@ -193,11 +194,20 @@ def _assigned_users_payload(assigned_users: List[Any]) -> List[Dict[str, str]]:
 class FolkClient:
     BASE_URL = "https://api.folk.app/v1"
 
-    def __init__(self, api_key: str = None, field_filter: Optional[FieldFilter] = None):
+    def __init__(self, api_key: str = None, field_filter: Optional[FieldFilter] = None,
+                 *, min_interval_s: float = DEFAULT_MIN_INTERVAL_S,
+                 pacer: Optional[FolkPacer] = None):
+        """`min_interval_s`: minimum spacing between two requests on this key,
+        across every client and thread of the process (`pacing.py`); 0 turns
+        pacing off. `pacer`: the process-wide one unless given."""
         self.api_key = require(api_key, "FOLK_API_KEY")
         # Redacts sensitive fields (emails, names…) from every response.
         # Defaults to the `field_filters.folk` policy in ~/.otomata/config.yaml.
         self.field_filter = field_filter or FieldFilter.from_config("folk")
+        if min_interval_s < 0:
+            raise ValueError("min_interval_s must be >= 0")
+        self.min_interval_s = min_interval_s
+        self._pacer = pacer or SHARED_PACER
 
     def _request(self, method: str, endpoint: str,
                  extra_headers: Optional[Dict[str, str]] = None, **kwargs) -> Any:
@@ -208,6 +218,8 @@ class FolkClient:
         if extra_headers:
             headers.update(extra_headers)
         for attempt in range(3):
+            # Paced before EVERY attempt, retries included: a retry is a request.
+            self._pacer.acquire(self.api_key, self.min_interval_s)
             # (connect, read) — repo convention: an unreachable host must not
             # block indefinitely (the transport had NO timeout).
             resp = requests.request(method, url, headers=headers,

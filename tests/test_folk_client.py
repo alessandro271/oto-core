@@ -46,7 +46,8 @@ def calls(monkeypatch):
 
 @pytest.fixture
 def c():
-    return FolkClient(api_key="test-key", field_filter=_Stub())
+    # Contract tests: no pacing (it has its own tests, test_folk_pacing.py).
+    return FolkClient(api_key="test-key", field_filter=_Stub(), min_interval_s=0)
 
 
 # --- Deals ---------------------------------------------------------------
@@ -222,7 +223,7 @@ def test_list_people_by_group_hits_the_right_query(monkeypatch):
         return _Resp({"data": {"items": [{"id": "p1"}], "pagination": {}}})
 
     monkeypatch.setattr(folk_client.requests, "request", fake_request)
-    c = FolkClient(api_key="k", field_filter=_Stub())
+    c = FolkClient(api_key="k", field_filter=_Stub(), min_interval_s=0)
     assert c.list_people(groups="grp_42") == [{"id": "p1"}]
     assert seen["params"]["filter[groups][in][id]"] == "grp_42"
 
