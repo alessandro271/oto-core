@@ -210,9 +210,16 @@ export type RequestSpec = {
   readonly pathParams: readonly string[]
   /** Les listes s'y encodent selon `Connector.queryArrays`. */
   readonly query: ArgumentMap
-  /** Corps JSON, quelle que soit la méthode : un `DELETE` peut en porter un. */
+  /** Corps JSON, quelle que soit la méthode : un `DELETE` peut en porter un ; avec `files`, les parties texte du corps multipart. */
   readonly body: ArgumentMap
   readonly headers: ArgumentMap
+  /**
+   * Nom de partie → argument qui porte l'identifiant d'un fichier en transit de l'appelant (un texte). Présent, le corps
+   * part en `multipart/form-data` : chaque entrée de `body` et constante de corps devient une partie texte, chaque fichier
+   * une partie au nom et au type du fichier. L'hôte lit le fichier sous l'identité de l'appelant, le consomme après un
+   * envoi réussi, jamais après un refus ni un envoi ambigu. Seulement en `POST`, `PUT` ou `PATCH`, sans pagination.
+   */
+  readonly files?: ArgumentMap
   /**
    * Valeurs envoyées à chaque appel, sous leur nom côté API, en plus des arguments ; elles ne sont pas dans le schéma.
    * Un nom n'y est jamais aussi un nom d'argument de la même place.

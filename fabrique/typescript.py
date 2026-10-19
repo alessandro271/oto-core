@@ -117,6 +117,8 @@ def _request(call: dict) -> str:
         ("body", js(call.get("body") or {})),
         ("headers", js(call.get("headers") or {})),
     ]
+    if "files" in call:
+        entries.append(("files", js(call["files"])))
     if "constants" in call:
         entries.append(("constants", js(call["constants"])))
     if "encode" in call:

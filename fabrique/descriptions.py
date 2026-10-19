@@ -4,9 +4,9 @@ Un fichier est lu, validé contre `connectors/connector.schema.json` (chaque exe
 contre l'entrée de sa fonction), puis contre les règles que le schéma JSON ne sait
 pas dire :
 
-1. chaque argument d'entrée va à un seul endroit de `call` (chemin, query, corps ou
-   en-tête), chaque `{param}` du chemin et chaque valeur de `query`, `body` et
-   `headers` nomme un argument déclaré, un argument du chemin est requis, aucun
+1. chaque argument d'entrée va à un seul endroit de `call` (chemin, query, corps,
+   en-tête ou partie fichier), chaque `{param}` du chemin et chaque valeur de `query`,
+   `body`, `headers` et `files` nomme un argument déclaré, un argument du chemin est requis, aucun
    argument n'est sans place, et le `request_param` d'une pagination est un
    argument ;
 2. chaque référence de `auth` (`key`, `token`, `username`, `password`, `client_id`,
@@ -73,7 +73,12 @@ pas dire :
    l'identifiant du travail) ; quand le coût se règle (`settle`), la quantité se lit
    dans les réponses de la relève : elle n'est pas paginée et ne déclare pas de
    `settle` à elle ; le délai de relève (`within_s`, exigé par le schéma dans ce cas)
-   est plus long que le délai de la soumission, quand il est déclaré.
+   est plus long que le délai de la soumission, quand il est déclaré ;
+14. les fichiers (`call.files`, une partie d'un corps multipart par argument qui
+   porte l'identifiant d'un fichier en transit de l'appelant) : la méthode envoie un
+   corps (`POST`, `PUT`, `PATCH`) ; la fonction n'est pas paginée ; chaque argument
+   fichier est un texte (`type: string`), jamais encodé ; un nom de partie fichier
+   n'est ni un nom de `body` ni une constante de corps (une partie, une valeur).
 
 Un fichier fautif lève `DescriptionError`, qui nomme le fichier, la fonction et la
 règle : la fabrique ne génère alors rien.
@@ -96,7 +101,9 @@ PATH_PARAM = re.compile(r"\{([^{}]*)\}")
 # Le délai d'un appel quand le connecteur n'en déclare pas (le `default` du schéma).
 DEFAULT_TIMEOUT_S = 30
 AUTH_REFERENCES = ("key", "token", "username", "password", "client_id", "client_secret")
-PLACES = ("query", "body", "headers")
+PLACES = ("query", "body", "headers", "files")
+# Les méthodes qui envoient un corps multipart.
+FILE_METHODS = ("POST", "PUT", "PATCH")
 # Ce qui précède l'identité d'un compte dans une adresse : le schéma et l'hôte (ou une adresse libre en tête), puis `/`.
 AFTER_HOST = re.compile(r"^(https://[^/{}]+|\{[a-z][a-z0-9_]*\})/")
 
@@ -181,9 +188,10 @@ def check_arguments(function: dict, where: str) -> None:
             f"{where}: function {name}: pagination request_param {pagination['request_param']!r} is not an input argument"
         )
     for argument in call.get("encode") or {}:
-        if argument not in placed or placed[argument] == "the path":
+        if argument not in placed or placed[argument] == "the path" or placed[argument].startswith("files "):
             raise DescriptionError(
                 f"{where}: function {name}: encode names {argument!r}, which is not placed in query, body or headers"
+                " (a file is never encoded)"
             )
 
 
@@ -333,6 +341,28 @@ def check_async(data: dict, function: dict, where: str) -> None:
             f"{where}: function {name}: its quantity is read in the responses of {collect['name']!r}, "
             "which must be neither paginated nor settled on its own"
         )
+
+
+def check_files(function: dict, where: str) -> None:
+    """Règle 14 : les parties fichier d'un corps multipart, dans une requête qui envoie un corps, une fois, sans
+    pagination ; l'argument d'une partie porte l'identifiant d'un fichier en transit, un texte."""
+    call = function.get("call") or {}
+    files = call.get("files")
+    if not files:
+        return
+    name = function["name"]
+    if call["method"] not in FILE_METHODS:
+        raise DescriptionError(f"{where}: function {name}: call.files needs a method that sends a body ({', '.join(FILE_METHODS)})")
+    if "pagination" in function:
+        raise DescriptionError(f"{where}: function {name}: a function that sends files is not paginated: a file is sent once")
+    texts = set(call.get("body") or {}) | set((call.get("constants") or {}).get("body") or {})
+    for part, argument in files.items():
+        if part in texts:
+            raise DescriptionError(f"{where}: function {name}: multipart part {part!r} is both a file and a body value")
+        if function["input"]["properties"][argument].get("type") != "string":
+            raise DescriptionError(
+                f"{where}: function {name}: file argument {argument!r} must be type: string, the id of a transit file"
+            )
 
 
 def _statuses(entry: dict) -> list[int]:
@@ -646,6 +676,7 @@ def check(data: dict, path: pathlib.Path) -> Description:
         check_timeout(data["connector"], function, where)
         check_cost(function, where)
         check_async(data, function, where)
+        check_files(function, where)
     names = [function["name"] for function in data["functions"]]
     twice = sorted({n for n in names if names.count(n) > 1})
     if twice:

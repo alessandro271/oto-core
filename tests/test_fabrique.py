@@ -877,3 +877,43 @@ def test_async_rule_refuses(mutate, message):
     mutate(description)
     with pytest.raises(DescriptionError, match=re.escape(message)):
         check(description, AMPLITUDE)
+
+
+# --- Règle 14 : les fichiers d'un corps multipart -------------------------------------------
+
+PENNYLANE_FIRM = CONNECTORS / "pennylane_firm" / "connector.yaml"
+
+
+def _upload(d):
+    return _fn(d, "upload_dms_file")
+
+
+def test_files_are_carried_only_where_declared():
+    module = connector_module(check(_load(PENNYLANE_FIRM), PENNYLANE_FIRM)).source
+    block = module.split("export const uploadDmsFile = ")[1].split("export const ")[0]
+    assert '    body: {"parent_folder_id": "parent_folder_id", "name": "name"},\n    headers: {},\n    files: {"file": "file"},\n' in block
+    assert module.count("    files: ") == 1
+    sellsy = connector_module(check(_load(SELLSY), SELLSY)).source
+    assert "files:" not in sellsy
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda d: _upload(d)["call"].update(method="GET"), "call.files needs a method that sends a body (POST, PUT, PATCH)"),
+    (lambda d: _upload(d)["call"].update(method="DELETE"), "call.files needs a method that sends a body"),
+    (lambda d: _upload(d).update(pagination={"kind": "cursor", "request_param": "name", "next": "next", "max_pages": 2}),
+     "a function that sends files is not paginated"),
+    (lambda d: _upload(d)["input"]["properties"].update(file={"type": ["string", "null"]}), "file argument 'file' must be type: string"),
+    (lambda d: _upload(d)["call"].update(encode={"file": "json"}), "encode names 'file'"),
+    (lambda d: _upload(d)["call"]["files"].update(name="name"), "argument 'name' goes to two places"),
+    (lambda d: _upload(d)["call"]["files"].update({"parent_folder_id": "file"}), "argument 'file' goes to two places"),
+    (lambda d: (_upload(d)["call"]["files"].update({"name": "file"}), _upload(d)["call"]["files"].pop("file")),
+     "multipart part 'name' is both a file and a body value"),
+    (lambda d: _upload(d)["call"].update(constants={"body": {"file": "x"}}), "multipart part 'file' is both a file and a body value"),
+    (lambda d: _upload(d)["call"]["files"].update(other="nope"), "files 'other' names 'nope', which is not an input argument"),
+], ids=["get", "delete", "paginated", "not_text", "encoded", "two_places", "two_parts", "part_also_body",
+        "part_also_constant", "unknown_argument"])
+def test_files_rule_refuses(mutate, message):
+    description = _load(PENNYLANE_FIRM)
+    mutate(description)
+    with pytest.raises(DescriptionError, match=re.escape(message)):
+        check(description, PENNYLANE_FIRM)

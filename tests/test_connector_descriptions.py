@@ -702,3 +702,26 @@ def test_invalid_async_is_rejected(mutate):
     mutate(description)
     with pytest.raises(ValidationError):
         _validate(description)
+
+
+# --- Fichiers d'un corps multipart -------------------------------------------------------
+
+
+def _files(d, files):
+    """`get_estimate` envoie son `id` en partie fichier ; le schéma seul : la place et la méthode sont la règle 14."""
+    d["functions"][1]["call"]["files"] = files
+
+
+def test_files_base_is_valid():
+    description = _sellsy()
+    _files(description, {"file": "id"})
+    _validate(description)
+
+
+@pytest.mark.parametrize("files", [{}, {"file": "Id"}, {"file": ""}, {"file": 1}, ["id"]],
+                         ids=["empty", "not_an_identifier", "empty_argument", "not_text", "a_list"])
+def test_invalid_files_are_rejected(files):
+    description = _sellsy()
+    _files(description, files)
+    with pytest.raises(ValidationError):
+        _validate(description)

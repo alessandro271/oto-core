@@ -30,7 +30,8 @@ describe("generated definitions", () => {
   it.each(functions)("%s: every path parameter and mapped argument names a schema key", (_name, _connector, fn) => {
     const keys = Object.keys(fn.schema.properties as object)
     for (const param of fn.request.pathParams) expect(keys).toContain(param)
-    for (const argument of [...Object.values(fn.request.query), ...Object.values(fn.request.body), ...Object.values(fn.request.headers)]) {
+    const mapped = [fn.request.query, fn.request.body, fn.request.headers, fn.request.files ?? {}].flatMap((names) => Object.values(names))
+    for (const argument of mapped) {
       expect(keys).toContain(argument)
     }
     for (const argument of Object.keys(fn.request.encode ?? {})) expect(keys).toContain(argument)
@@ -144,6 +145,22 @@ describe("generated definitions", () => {
     expect(collect?.class).toBe("read")
     expect(collect?.name).not.toBe(name)
     expect(collect?.schema.required).toEqual([job.jobId.to])
+  })
+
+  const uploads = functions.flatMap(([name, , fn]) => (fn.request.files ? [[name, fn, fn.request.files] as const] : []))
+  it("should declare at least one function that sends a file", () => {
+    expect(uploads.map(([name]) => name)).toContain("pennylane_firm.upload_dms_file")
+  })
+
+  it.each(uploads)("%s: each file part is a text argument, sent once in a body", (_name, fn, files) => {
+    expect(["POST", "PUT", "PATCH"]).toContain(fn.request.method)
+    expect(fn.pagination).toBeUndefined()
+    const properties = fn.schema.properties as Record<string, { type?: unknown }>
+    for (const [part, argument] of Object.entries(files)) {
+      expect(properties[argument]?.type).toBe("string")
+      expect(Object.keys(fn.request.body)).not.toContain(part)
+      expect(fn.request.encode?.[argument]).toBeUndefined()
+    }
   })
 
   it("should give each item cost two required list arguments", () => {
