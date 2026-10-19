@@ -27,6 +27,7 @@ export const companySearch = defineFunction({
       "query": {
         "type": "string",
         "minLength": 1,
+        "personal": true,
         "description": "Name, brand or acronym; also accepts a SIREN or SIRET."
       },
       "naf": {
@@ -273,6 +274,7 @@ export const propertyGeocodeAddress = defineFunction({
       "adresse": {
         "type": "string",
         "minLength": 3,
+        "personal": true,
         "description": "Free-text address, ideally with postal code and town."
       },
       "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 5},
@@ -310,8 +312,14 @@ export const propertyReverseGeocode = defineFunction({
     "additionalProperties": false,
     "required": ["lat", "lon"],
     "properties": {
-      "lat": {"type": "number", "minimum": -90, "maximum": 90, "description": "Latitude, WGS 84."},
-      "lon": {"type": "number", "minimum": -180, "maximum": 180, "description": "Longitude, WGS 84."}
+      "lat": {"type": "number", "minimum": -90, "maximum": 90, "personal": true, "description": "Latitude, WGS 84."},
+      "lon": {
+        "type": "number",
+        "minimum": -180,
+        "maximum": 180,
+        "personal": true,
+        "description": "Longitude, WGS 84."
+      }
     }
   },
   examples: [
@@ -345,8 +353,14 @@ export const propertyGetCadastralParcel = defineFunction({
     "additionalProperties": false,
     "required": ["lat", "lon"],
     "properties": {
-      "lat": {"type": "number", "minimum": -90, "maximum": 90, "description": "Latitude, WGS 84."},
-      "lon": {"type": "number", "minimum": -180, "maximum": 180, "description": "Longitude, WGS 84."}
+      "lat": {"type": "number", "minimum": -90, "maximum": 90, "personal": true, "description": "Latitude, WGS 84."},
+      "lon": {
+        "type": "number",
+        "minimum": -180,
+        "maximum": 180,
+        "personal": true,
+        "description": "Longitude, WGS 84."
+      }
     }
   },
   examples: [
@@ -383,6 +397,7 @@ export const propertyListEnergyRatings = defineFunction({
       "adresse": {
         "type": "string",
         "minLength": 3,
+        "personal": true,
         "description": "Free-text address, ideally with postal code and town."
       },
       "radius_m": {
@@ -436,6 +451,7 @@ export const propertyListComparableSales = defineFunction({
       "adresse": {
         "type": "string",
         "minLength": 3,
+        "personal": true,
         "description": "Free-text address, ideally with postal code and town."
       },
       "radius_m": {
@@ -580,8 +596,14 @@ export const urbanGetZoning = defineFunction({
     "additionalProperties": false,
     "required": ["lon", "lat"],
     "properties": {
-      "lon": {"type": "number", "minimum": -180, "maximum": 180, "description": "Longitude, WGS 84."},
-      "lat": {"type": "number", "minimum": -90, "maximum": 90, "description": "Latitude, WGS 84."}
+      "lon": {
+        "type": "number",
+        "minimum": -180,
+        "maximum": 180,
+        "personal": true,
+        "description": "Longitude, WGS 84."
+      },
+      "lat": {"type": "number", "minimum": -90, "maximum": 90, "personal": true, "description": "Latitude, WGS 84."}
     }
   },
   examples: [
@@ -774,8 +796,14 @@ export const urbanGetClayExposure = defineFunction({
     "additionalProperties": false,
     "required": ["lon", "lat"],
     "properties": {
-      "lon": {"type": "number", "minimum": -180, "maximum": 180, "description": "Longitude, WGS 84."},
-      "lat": {"type": "number", "minimum": -90, "maximum": 90, "description": "Latitude, WGS 84."}
+      "lon": {
+        "type": "number",
+        "minimum": -180,
+        "maximum": 180,
+        "personal": true,
+        "description": "Longitude, WGS 84."
+      },
+      "lat": {"type": "number", "minimum": -90, "maximum": 90, "personal": true, "description": "Latitude, WGS 84."}
     }
   },
   examples: [
@@ -1210,12 +1238,14 @@ export const complianceScreenAssetFreeze = defineFunction({
         "type": "string",
         "minLength": 2,
         "maxLength": 120,
+        "personal": true,
         "description": "Surname, or name of the legal person: Martin, SCI Les Hortillons."
       },
       "prenom": {
         "type": "string",
         "minLength": 2,
         "maxLength": 120,
+        "personal": true,
         "description": "First name: puts the entries that carry it first, drops none."
       },
       "limit": {
@@ -1250,7 +1280,7 @@ export const connector = defineConnector({
   name: "fod",
   label: "France Open Data",
   namespace: "fod",
-  version: "1.3.0",
+  version: "1.4.0",
   apiVersion: "france-opendata-service 6f69e80 (routes unversioned)",
   baseUrl: "https://data.oto.zone",
   auth: {"kind": "bearer", "token": "api_key"},
