@@ -632,7 +632,8 @@ def _cost(d, **cost):
     {"per": "request", "unit": "credits", "settle": {"path": "credits_used"}},
     {"per": "item", "items": "embed", "unit": "credits"},
     {"per": "item", "items": "embed", "times": "fields", "unit": "fields", "settle": {"path": "data.0.found"}},
-], ids=["request", "page", "request_unit", "request_settle", "item", "item_times_settle"])
+    {"per": "item", "items": "embed", "weights": {"field": "fields", "values": {"a": 1, "b": 10}}, "unit": "credits", "settle": {"path": "cost.credits"}},
+], ids=["request", "page", "request_unit", "request_settle", "item", "item_times_settle", "item_weights_settle"])
 def test_cost_base_is_valid(cost):
     """Les variantes ci-dessous partent d'une description valide : chacune n'échoue que par sa faute."""
     description = _sellsy()
@@ -655,9 +656,25 @@ def test_cost_base_is_valid(cost):
     {"per": "request", "unit": ""},
     {"per": "item", "items": "Embed", "unit": "credits"},
     {"per": "request", "amount": 2},
+    {"per": "request", "weights": {"field": "fields", "values": {"a": 1, "b": 10}}},
+    {"per": "item", "items": "embed", "times": "fields", "weights": {"field": "fields", "values": {"a": 1, "b": 10}}, "unit": "credits"},
+    {"per": "item", "items": "embed", "weights": {"field": "fields", "values": {"a": 1, "b": 10}}},
+    {"per": "item", "items": "embed", "weights": {"field": "fields"}, "unit": "credits"},
+    {"per": "item", "items": "embed", "weights": {"values": {"a": 1}}, "unit": "credits"},
+    {"per": "item", "items": "embed", "weights": {"field": "fields", "values": {}}, "unit": "credits"},
+    {"per": "item", "items": "embed", "weights": {"field": "fields", "values": {"a": 0}}, "unit": "credits"},
+    {"per": "item", "items": "embed", "weights": {"field": "fields", "values": {"a": -1}}, "unit": "credits"},
+    {"per": "item", "items": "embed", "weights": {"field": "fields", "values": {"a": 1.5}}, "unit": "credits"},
+    {"per": "item", "items": "embed", "weights": {"field": "fields", "values": {"a": "1"}}, "unit": "credits"},
+    {"per": "item", "items": "embed", "weights": {"field": "fields", "values": {"": 1}}, "unit": "credits"},
+    {"per": "item", "items": "embed", "weights": {"field": "Fields", "values": {"a": 1}}, "unit": "credits"},
+    {"per": "item", "items": "embed", "weights": {"field": "fields", "values": {"a": 1}, "default": 1}, "unit": "credits"},
 ], ids=["unknown_per", "item_without_items", "item_without_unit", "items_per_request", "times_per_request",
         "times_without_items", "settle_without_unit", "settle_without_path", "settle_leading_dot", "settle_space",
-        "settle_unknown_key", "empty_unit", "items_not_an_identifier", "unknown_key"])
+        "settle_unknown_key", "empty_unit", "items_not_an_identifier", "unknown_key",
+        "weights_per_request", "weights_with_times", "weights_without_unit", "weights_without_values",
+        "weights_without_field", "weights_empty_table", "weight_zero", "weight_negative", "weight_not_an_integer",
+        "weight_text", "weight_empty_value", "weights_field_not_an_identifier", "weights_unknown_key"])
 def test_invalid_cost_is_rejected(cost):
     description = _sellsy()
     _cost(description, **cost)
@@ -682,6 +699,8 @@ def test_async_base_is_valid():
     description["functions"][0]["cost"] = {"per": "request", "unit": "credits", "settle": {"path": "used"}}
     _async(description, within_s=600)
     _validate(description)
+    _async(description, no_deadline=True)
+    _validate(description)
 
 
 @pytest.mark.parametrize("mutate", [
@@ -695,10 +714,38 @@ def test_async_base_is_valid():
     lambda d: _async(d, job_id={"from": "id", "to": "id", "as": "text"}),
     lambda d: d["functions"][0].update({"async": {"job_id": {"from": "id", "to": "id"}}}),
     lambda d: (_async(d), d["functions"][0].update(cost={"per": "request", "unit": "credits", "settle": {"path": "used"}})),
+    lambda d: _async(d, no_deadline=False),
+    lambda d: _async(d, no_deadline="true"),
+    lambda d: _async(d, within_s=600, no_deadline=True),
+    lambda d: (_async(d, no_deadline=False), d["functions"][0].update(cost={"per": "request", "unit": "credits", "settle": {"path": "used"}})),
 ], ids=["within_zero", "within_above_a_day", "within_not_an_integer", "within_text", "unknown_key", "job_id_without_to",
-        "job_id_empty_segment", "job_id_unknown_key", "without_collect", "settled_without_within"])
+        "job_id_empty_segment", "job_id_unknown_key", "without_collect", "settled_without_within", "no_deadline_false",
+        "no_deadline_text", "no_deadline_and_within", "settled_no_deadline_false"])
 def test_invalid_async_is_rejected(mutate):
     description = _sellsy()
     mutate(description)
+    with pytest.raises(ValidationError):
+        _validate(description)
+
+
+# --- Fichiers d'un corps multipart -------------------------------------------------------
+
+
+def _files(d, files):
+    """`get_estimate` envoie son `id` en partie fichier ; le schéma seul : la place et la méthode sont la règle 14."""
+    d["functions"][1]["call"]["files"] = files
+
+
+def test_files_base_is_valid():
+    description = _sellsy()
+    _files(description, {"file": "id"})
+    _validate(description)
+
+
+@pytest.mark.parametrize("files", [{}, {"file": "Id"}, {"file": ""}, {"file": 1}, ["id"]],
+                         ids=["empty", "not_an_identifier", "empty_argument", "not_text", "a_list"])
+def test_invalid_files_are_rejected(files):
+    description = _sellsy()
+    _files(description, files)
     with pytest.raises(ValidationError):
         _validate(description)

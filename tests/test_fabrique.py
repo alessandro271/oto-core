@@ -30,7 +30,7 @@ def _load(path: pathlib.Path) -> dict:
 
 
 def test_committed_output_is_current():
-    assert stale(generate()) == [], "ts/src is out of date: run `python -m fabrique`"
+    assert stale(generate()) == [], "ts/src or oto/connectors/declared.py is out of date: run `python -m fabrique`"
 
 
 def test_every_description_generates_a_module():
@@ -716,6 +716,44 @@ def test_account_signal_rule_refuses(mutate, message):
         check(description, SELLSY)
 
 
+# --- Règle 15 : la donnée personnelle ----------------------------------------------
+
+
+def test_personal_property_passes_and_is_carried_as_is():
+    description = _load(SELLSY)
+    estimate = _get_estimate(description)
+    estimate["input"]["properties"]["id"]["personal"] = True
+    estimate["input"]["properties"]["fields"]["items"]["personal"] = True
+    source = function_source("sellsy", _get_estimate(check(description, SELLSY).data))
+    assert '"id": {"type": "integer", "personal": true}' in source
+    assert source.count('"personal": true') == 2
+
+
+def test_a_property_named_personal_is_not_a_mark():
+    description = _load(SELLSY)
+    estimate = _get_estimate(description)
+    estimate["input"]["properties"]["personal"] = {"type": "string", "default": "no"}
+    estimate["call"]["query"]["personal"] = "personal"
+    check(description, SELLSY)
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda f: f["input"].update(personal=True), "personal marks a property of input, not input itself"),
+    (lambda f: f["input"]["properties"]["id"].update(personal="yes"), "input.properties.id: personal must be true"),
+    (lambda f: f["input"]["properties"]["id"].update(personal=False), "input.properties.id: personal must be true"),
+    (lambda f: f["input"]["properties"]["embed"]["items"]["anyOf"][1].update(personal=1),
+     "input.properties.embed.items.anyOf[1]: personal must be true"),
+    (lambda f: f.update(output={"schema": {"type": "object", "additionalProperties": False,
+                                           "properties": {"email": {"type": "string", "personal": True}}}}),
+     "output.schema.properties.email: personal marks an input argument, not an output field"),
+], ids=["root", "not_a_boolean", "false", "nested", "output"])
+def test_misplaced_personal_is_refused(mutate, message):
+    description = _load(SELLSY)
+    mutate(_get_estimate(description))
+    with pytest.raises(DescriptionError, match=re.escape(f"function get_estimate: {message}")):
+        check(description, SELLSY)
+
+
 # --- Règle 11 : le délai propre à une fonction ---------------------------------------
 
 
@@ -828,6 +866,41 @@ def test_balance_probe_refuses_any_cost(cost):
         check(description, PENNYLANE)
 
 
+# --- Règle 16 : le poids d'une valeur ----------------------------------------------------
+
+FULLENRICH = CONNECTORS / "fullenrich" / "connector.yaml"
+
+
+def _contact(d):
+    """Le schéma d'un contact de `fullenrich.submit`, dont `enrich_fields` porte les valeurs pesées."""
+    return _fn(d, "submit")["input"]["properties"]["contacts"]["items"]
+
+
+def test_weighted_cost_passes_and_is_carried():
+    source = function_source("fullenrich", _fn(check(_load(FULLENRICH), FULLENRICH).data, "submit"))
+    assert ('  cost: { per: "item", items: "contacts", weights: { field: "enrich_fields", values: '
+            '{"contact.work_emails": 1, "contact.personal_emails": 3, "contact.phones": 10} }, unit: "credits", '
+            'settle: { path: "cost.credits" } },\n') in source
+    assert '  async: { collect: "fullenrich.fetch", jobId: { from: "enrichment_id", to: "enrichment_id" }, noDeadline: true },\n' in source
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda d: _fn(d, "submit")["cost"]["weights"].update(field="nope"), "cost.weights.field 'nope' must be a property of each element of 'contacts'"),
+    (lambda d: _contact(d).update(required=["first_name", "last_name"]), "cost.weights.field 'enrich_fields' must be a required list of each element"),
+    (lambda d: _contact(d)["properties"]["enrich_fields"].pop("uniqueItems"), "must be a required list of each element"),
+    (lambda d: _contact(d)["properties"]["enrich_fields"].update(minItems=0), "must be a required list of each element"),
+    (lambda d: _contact(d)["properties"]["enrich_fields"]["items"].pop("enum"), "its allowed values (items.enum, texts) must be exactly the keys"),
+    (lambda d: _fn(d, "submit")["cost"]["weights"]["values"].pop("contact.phones"), "must be exactly the keys of cost.weights.values"),
+    (lambda d: _fn(d, "submit")["cost"]["weights"]["values"].update({"contact.company": 2}), "must be exactly the keys of cost.weights.values"),
+], ids=["field_unknown", "field_not_required", "field_not_unique", "field_min_zero", "field_without_enum",
+        "allowed_value_without_weight", "weight_of_no_allowed_value"])
+def test_weighted_cost_rule_refuses(mutate, message):
+    description = _load(FULLENRICH)
+    mutate(description)
+    with pytest.raises(DescriptionError, match=re.escape(message)):
+        check(description, FULLENRICH)
+
+
 # --- Règle 13 : le travail asynchrone ----------------------------------------------------
 
 AMPLITUDE = CONNECTORS / "amplitude" / "connector.yaml"
@@ -877,3 +950,43 @@ def test_async_rule_refuses(mutate, message):
     mutate(description)
     with pytest.raises(DescriptionError, match=re.escape(message)):
         check(description, AMPLITUDE)
+
+
+# --- Règle 14 : les fichiers d'un corps multipart -------------------------------------------
+
+PENNYLANE_FIRM = CONNECTORS / "pennylane_firm" / "connector.yaml"
+
+
+def _upload(d):
+    return _fn(d, "upload_dms_file")
+
+
+def test_files_are_carried_only_where_declared():
+    module = connector_module(check(_load(PENNYLANE_FIRM), PENNYLANE_FIRM)).source
+    block = module.split("export const uploadDmsFile = ")[1].split("export const ")[0]
+    assert '    body: {"parent_folder_id": "parent_folder_id", "name": "name"},\n    headers: {},\n    files: {"file": "file"},\n' in block
+    assert module.count("    files: ") == 1
+    sellsy = connector_module(check(_load(SELLSY), SELLSY)).source
+    assert "files:" not in sellsy
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda d: _upload(d)["call"].update(method="GET"), "call.files needs a method that sends a body (POST, PUT, PATCH)"),
+    (lambda d: _upload(d)["call"].update(method="DELETE"), "call.files needs a method that sends a body"),
+    (lambda d: _upload(d).update(pagination={"kind": "cursor", "request_param": "name", "next": "next", "max_pages": 2}),
+     "a function that sends files is not paginated"),
+    (lambda d: _upload(d)["input"]["properties"].update(file={"type": ["string", "null"]}), "file argument 'file' must be type: string"),
+    (lambda d: _upload(d)["call"].update(encode={"file": "json"}), "encode names 'file'"),
+    (lambda d: _upload(d)["call"]["files"].update(name="name"), "argument 'name' goes to two places"),
+    (lambda d: _upload(d)["call"]["files"].update({"parent_folder_id": "file"}), "argument 'file' goes to two places"),
+    (lambda d: (_upload(d)["call"]["files"].update({"name": "file"}), _upload(d)["call"]["files"].pop("file")),
+     "multipart part 'name' is both a file and a body value"),
+    (lambda d: _upload(d)["call"].update(constants={"body": {"file": "x"}}), "multipart part 'file' is both a file and a body value"),
+    (lambda d: _upload(d)["call"]["files"].update(other="nope"), "files 'other' names 'nope', which is not an input argument"),
+], ids=["get", "delete", "paginated", "not_text", "encoded", "two_places", "two_parts", "part_also_body",
+        "part_also_constant", "unknown_argument"])
+def test_files_rule_refuses(mutate, message):
+    description = _load(PENNYLANE_FIRM)
+    mutate(description)
+    with pytest.raises(DescriptionError, match=re.escape(message)):
+        check(description, PENNYLANE_FIRM)

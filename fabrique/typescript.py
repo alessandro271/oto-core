@@ -117,6 +117,8 @@ def _request(call: dict) -> str:
         ("body", js(call.get("body") or {})),
         ("headers", js(call.get("headers") or {})),
     ]
+    if "files" in call:
+        entries.append(("files", js(call["files"])))
     if "constants" in call:
         entries.append(("constants", js(call["constants"])))
     if "encode" in call:
@@ -199,7 +201,11 @@ def function_source(connector: str, function: dict) -> str:
 
 def _cost(cost: dict) -> str:
     """Le coût d'une fonction, ses clés dans l'ordre du format, seulement celles qu'elle déclare."""
-    parts = [f"{key}: {js(cost[key])}" for key in ("per", "items", "times", "unit") if key in cost]
+    parts = [f"{key}: {js(cost[key])}" for key in ("per", "items", "times") if key in cost]
+    if "weights" in cost:
+        parts.append("weights: { field: " + js(cost["weights"]["field"]) + ", values: " + js(cost["weights"]["values"]) + " }")
+    if "unit" in cost:
+        parts.append(f"unit: {js(cost['unit'])}")
     if "settle" in cost:
         parts.append("settle: { path: " + js(cost["settle"]["path"]) + " }")
     return "{ " + ", ".join(parts) + " }"
@@ -214,6 +220,8 @@ def _async(connector: str, declared: dict) -> str:
     ]
     if "within_s" in declared:
         parts.append("withinMs: " + js(declared["within_s"] * 1000))
+    if declared.get("no_deadline") is True:
+        parts.append("noDeadline: true")
     return "{ " + ", ".join(parts) + " }"
 
 

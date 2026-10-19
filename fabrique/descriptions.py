@@ -4,9 +4,9 @@ Un fichier est lu, validé contre `connectors/connector.schema.json` (chaque exe
 contre l'entrée de sa fonction), puis contre les règles que le schéma JSON ne sait
 pas dire :
 
-1. chaque argument d'entrée va à un seul endroit de `call` (chemin, query, corps ou
-   en-tête), chaque `{param}` du chemin et chaque valeur de `query`, `body` et
-   `headers` nomme un argument déclaré, un argument du chemin est requis, aucun
+1. chaque argument d'entrée va à un seul endroit de `call` (chemin, query, corps,
+   en-tête ou partie fichier), chaque `{param}` du chemin et chaque valeur de `query`,
+   `body`, `headers` et `files` nomme un argument déclaré, un argument du chemin est requis, aucun
    argument n'est sans place, et le `request_param` d'une pagination est un
    argument ;
 2. chaque référence de `auth` (`key`, `token`, `username`, `password`, `client_id`,
@@ -72,8 +72,23 @@ pas dire :
    en est le seul argument requis (la relève se fait sans rien d'autre que
    l'identifiant du travail) ; quand le coût se règle (`settle`), la quantité se lit
    dans les réponses de la relève : elle n'est pas paginée et ne déclare pas de
-   `settle` à elle ; le délai de relève (`within_s`, exigé par le schéma dans ce cas)
-   est plus long que le délai de la soumission, quand il est déclaré.
+   `settle` à elle ; le délai de relève (`within_s`, exigé par le schéma dans ce cas,
+   sauf `no_deadline` quand la référence de l'éditeur dit qu'un travail n'a pas
+   d'échéance) est plus long que le délai de la soumission, quand il est déclaré ;
+14. les fichiers (`call.files`, une partie d'un corps multipart par argument qui
+   porte l'identifiant d'un fichier en transit de l'appelant) : la méthode envoie un
+   corps (`POST`, `PUT`, `PATCH`) ; la fonction n'est pas paginée ; chaque argument
+   fichier est un texte (`type: string`), jamais encodé ; un nom de partie fichier
+   n'est ni un nom de `body` ni une constante de corps (une partie, une valeur) ;
+15. la donnée personnelle (`personal`) : dans l'entrée, sur une propriété seulement,
+   jamais à la racine, et toujours `true` ; jamais dans le schéma de la sortie, où elle
+   ne voudrait rien dire. L'hôte ne journalise pas sa valeur ;
+16. le poids d'une valeur (`cost.weights`, à la place de `times`) : `field` nomme un
+   champ de chaque élément de `items`, requis dans l'élément, une liste d'au moins un
+   élément aux valeurs uniques, dont les valeurs admises (`enum`) sont exactement les
+   clés de la table de poids : une valeur sans poids est refusée par le schéma
+   d'entrée, avant l'appel, jamais comptée pour rien, et un poids ne vaut que pour une
+   valeur admise.
 
 Un fichier fautif lève `DescriptionError`, qui nomme le fichier, la fonction et la
 règle : la fabrique ne génère alors rien.
@@ -96,7 +111,9 @@ PATH_PARAM = re.compile(r"\{([^{}]*)\}")
 # Le délai d'un appel quand le connecteur n'en déclare pas (le `default` du schéma).
 DEFAULT_TIMEOUT_S = 30
 AUTH_REFERENCES = ("key", "token", "username", "password", "client_id", "client_secret")
-PLACES = ("query", "body", "headers")
+PLACES = ("query", "body", "headers", "files")
+# Les méthodes qui envoient un corps multipart.
+FILE_METHODS = ("POST", "PUT", "PATCH")
 # Ce qui précède l'identité d'un compte dans une adresse : le schéma et l'hôte (ou une adresse libre en tête), puis `/`.
 AFTER_HOST = re.compile(r"^(https://[^/{}]+|\{[a-z][a-z0-9_]*\})/")
 
@@ -181,9 +198,10 @@ def check_arguments(function: dict, where: str) -> None:
             f"{where}: function {name}: pagination request_param {pagination['request_param']!r} is not an input argument"
         )
     for argument in call.get("encode") or {}:
-        if argument not in placed or placed[argument] == "the path":
+        if argument not in placed or placed[argument] == "the path" or placed[argument].startswith("files "):
             raise DescriptionError(
                 f"{where}: function {name}: encode names {argument!r}, which is not placed in query, body or headers"
+                " (a file is never encoded)"
             )
 
 
@@ -284,15 +302,43 @@ def _check_cost_list(function: dict, key: str, where: str) -> None:
         )
 
 
+def _check_cost_weights(function: dict, where: str) -> None:
+    """Règle 16, le poids d'une valeur : le champ qui porte les valeurs est, dans chaque élément de `items`, une liste requise
+    d'au moins un élément, aux valeurs uniques, dont les valeurs admises sont exactement les clés de la table."""
+    cost = function["cost"]
+    field = cost["weights"]["field"]
+    element = function["input"]["properties"][cost["items"]].get("items")
+    prefix = f"{where}: function {function['name']}: cost.weights.field {field!r}"
+    if not isinstance(element, dict) or not isinstance(element.get("properties"), dict) or field not in element["properties"]:
+        raise DescriptionError(f"{prefix} must be a property of each element of {cost['items']!r} (an object schema)")
+    schema = element["properties"][field]
+    listed = (schema.get("type") == "array" and isinstance(schema.get("minItems"), int) and schema["minItems"] >= 1
+              and schema.get("uniqueItems") is True)
+    if not listed or field not in element.get("required", []):
+        raise DescriptionError(
+            f"{prefix} must be a required list of each element (type: array, minItems 1 or more, uniqueItems: true), "
+            "so that each element counts at least one weight, each value once"
+        )
+    allowed = schema.get("items", {}).get("enum") if isinstance(schema.get("items"), dict) else None
+    table = set(cost["weights"]["values"])
+    if not isinstance(allowed, list) or not all(isinstance(v, str) for v in allowed) or set(allowed) != table:
+        raise DescriptionError(
+            f"{prefix}: its allowed values (items.enum, texts) must be exactly the keys of cost.weights.values "
+            f"({', '.join(sorted(table))}), so that a value without a weight is refused before the call"
+        )
+
+
 def check_cost(function: dict, where: str) -> None:
     """Règle 12 : le coût à l'élément compte des listes requises et non vides, distinctes ; ni l'élément ni la quantité
-    relue sur une fonction paginée."""
+    relue sur une fonction paginée. Les valeurs pesées dans chaque élément sont la règle 16."""
     cost = function.get("cost")
     if cost is None:
         return
     name = function["name"]
     if cost["per"] == "item":
         _check_cost_list(function, "items", where)
+        if "weights" in cost:
+            _check_cost_weights(function, where)
         if "times" in cost:
             if cost["times"] == cost["items"]:
                 raise DescriptionError(f"{where}: function {name}: cost.times names the items argument {cost['items']!r} again")
@@ -333,6 +379,66 @@ def check_async(data: dict, function: dict, where: str) -> None:
             f"{where}: function {name}: its quantity is read in the responses of {collect['name']!r}, "
             "which must be neither paginated nor settled on its own"
         )
+
+
+def check_files(function: dict, where: str) -> None:
+    """Règle 14 : les parties fichier d'un corps multipart, dans une requête qui envoie un corps, une fois, sans
+    pagination ; l'argument d'une partie porte l'identifiant d'un fichier en transit, un texte."""
+    call = function.get("call") or {}
+    files = call.get("files")
+    if not files:
+        return
+    name = function["name"]
+    if call["method"] not in FILE_METHODS:
+        raise DescriptionError(f"{where}: function {name}: call.files needs a method that sends a body ({', '.join(FILE_METHODS)})")
+    if "pagination" in function:
+        raise DescriptionError(f"{where}: function {name}: a function that sends files is not paginated: a file is sent once")
+    texts = set(call.get("body") or {}) | set((call.get("constants") or {}).get("body") or {})
+    for part, argument in files.items():
+        if part in texts:
+            raise DescriptionError(f"{where}: function {name}: multipart part {part!r} is both a file and a body value")
+        if function["input"]["properties"][argument].get("type") != "string":
+            raise DescriptionError(
+                f"{where}: function {name}: file argument {argument!r} must be type: string, the id of a transit file"
+            )
+
+
+# Les mots d'un JSON Schema dont la valeur est un schéma, une liste de schémas, ou des schémas par nom : la donnée
+# personnelle se cherche là seulement, jamais dans `examples`, `default`, `const` ni `enum`, et le nom d'une propriété
+# (une propriété qui s'appellerait `personal`) n'est jamais lu comme un mot.
+SCHEMA_KEYWORDS = ("items", "additionalProperties", "not", "if", "then", "else", "contains", "propertyNames",
+                   "unevaluatedItems", "unevaluatedProperties")
+SCHEMA_LISTS = ("allOf", "anyOf", "oneOf", "prefixItems")
+SCHEMA_MAPS = ("properties", "patternProperties", "$defs", "dependentSchemas")
+
+
+def _personal_marks(schema: object, at: str) -> list[tuple[str, object]]:
+    """Chaque `personal` d'un schéma, avec sa place (`input.properties.email`)."""
+    if not isinstance(schema, dict):
+        return []
+    found = [(at, schema["personal"])] if "personal" in schema else []
+    for key in SCHEMA_KEYWORDS:
+        found += _personal_marks(schema.get(key), f"{at}.{key}")
+    for key in SCHEMA_LISTS:
+        for index, child in enumerate(schema.get(key) or []):
+            found += _personal_marks(child, f"{at}.{key}[{index}]")
+    for key in SCHEMA_MAPS:
+        for name, child in (schema.get(key) or {}).items():
+            found += _personal_marks(child, f"{at}.{key}.{name}")
+    return found
+
+
+def check_personal(function: dict, where: str) -> None:
+    """Règle 15 : `personal` marque une propriété de l'entrée, toujours `true` ; ni la racine ni la sortie."""
+    name = function["name"]
+    for at, value in _personal_marks(function["input"], "input"):
+        if at == "input":
+            raise DescriptionError(f"{where}: function {name}: personal marks a property of input, not input itself")
+        if value is not True:
+            raise DescriptionError(f"{where}: function {name}: {at}: personal must be true (declare it only where it applies)")
+    schema = (function.get("output") or {}).get("schema")
+    for at, _ in _personal_marks(schema, "output.schema"):
+        raise DescriptionError(f"{where}: function {name}: {at}: personal marks an input argument, not an output field")
 
 
 def _statuses(entry: dict) -> list[int]:
@@ -646,6 +752,8 @@ def check(data: dict, path: pathlib.Path) -> Description:
         check_timeout(data["connector"], function, where)
         check_cost(function, where)
         check_async(data, function, where)
+        check_files(function, where)
+        check_personal(function, where)
     names = [function["name"] for function in data["functions"]]
     twice = sorted({n for n in names if names.count(n) > 1})
     if twice:
