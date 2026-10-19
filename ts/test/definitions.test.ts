@@ -178,4 +178,18 @@ describe("generated definitions", () => {
       for (const argument of lists) expect(fn.schema.required, name).toContain(argument)
     }
   })
+
+  it("should weigh every allowed value of a weighted cost, and nothing else", () => {
+    const weighted = functions.filter(([, , fn]) => fn.cost?.per === "item" && fn.cost.weights !== undefined)
+    expect(weighted.length).toBeGreaterThan(0)
+    for (const [name, , fn] of weighted) {
+      if (fn.cost?.per !== "item" || fn.cost.weights === undefined) continue
+      const properties = fn.schema.properties as Record<string, { items?: { required?: string[]; properties?: Record<string, { items?: { enum?: string[] } }> } }>
+      const element = properties[fn.cost.items]?.items
+      expect(element?.required, name).toContain(fn.cost.weights.field)
+      const allowed = element?.properties?.[fn.cost.weights.field]?.items?.enum ?? []
+      expect([...allowed].sort(), name).toEqual(Object.keys(fn.cost.weights.values).sort())
+      for (const weight of Object.values(fn.cost.weights.values)) expect(Number.isInteger(weight) && weight >= 1, name).toBe(true)
+    }
+  })
 })

@@ -4,6 +4,7 @@ import * as aircall from "./aircall"
 import * as amplitude from "./amplitude"
 import * as claap from "./claap"
 import * as fod from "./fod"
+import * as fullenrich from "./fullenrich"
 import * as gmail from "./gmail"
 import * as googleCalendar from "./google_calendar"
 import * as googleDrive from "./google_drive"
@@ -32,6 +33,7 @@ export { aircall }
 export { amplitude }
 export { claap }
 export { fod }
+export { fullenrich }
 export { gmail }
 export { googleCalendar }
 export { googleDrive }
@@ -63,6 +65,7 @@ export const connectors: readonly Connector[] = [
   amplitude.connector,
   claap.connector,
   fod.connector,
+  fullenrich.connector,
   gmail.connector,
   googleCalendar.connector,
   googleDrive.connector,

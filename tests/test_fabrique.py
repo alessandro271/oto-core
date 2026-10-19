@@ -30,7 +30,7 @@ def _load(path: pathlib.Path) -> dict:
 
 
 def test_committed_output_is_current():
-    assert stale(generate()) == [], "ts/src is out of date: run `python -m fabrique`"
+    assert stale(generate()) == [], "ts/src or oto/connectors/declared.py is out of date: run `python -m fabrique`"
 
 
 def test_every_description_generates_a_module():
@@ -864,6 +864,41 @@ def test_balance_probe_refuses_any_cost(cost):
     description["connector"]["probe"]["balance"] = {"path": "credits.remaining", "min": 1, "unit": "credits"}
     with pytest.raises(DescriptionError, match=re.escape("reads a balance, so it must declare no cost")):
         check(description, PENNYLANE)
+
+
+# --- Règle 16 : le poids d'une valeur ----------------------------------------------------
+
+FULLENRICH = CONNECTORS / "fullenrich" / "connector.yaml"
+
+
+def _contact(d):
+    """Le schéma d'un contact de `fullenrich.submit`, dont `enrich_fields` porte les valeurs pesées."""
+    return _fn(d, "submit")["input"]["properties"]["contacts"]["items"]
+
+
+def test_weighted_cost_passes_and_is_carried():
+    source = function_source("fullenrich", _fn(check(_load(FULLENRICH), FULLENRICH).data, "submit"))
+    assert ('  cost: { per: "item", items: "contacts", weights: { field: "enrich_fields", values: '
+            '{"contact.work_emails": 1, "contact.personal_emails": 3, "contact.phones": 10} }, unit: "credits", '
+            'settle: { path: "cost.credits" } },\n') in source
+    assert '  async: { collect: "fullenrich.fetch", jobId: { from: "enrichment_id", to: "enrichment_id" }, noDeadline: true },\n' in source
+
+
+@pytest.mark.parametrize("mutate, message", [
+    (lambda d: _fn(d, "submit")["cost"]["weights"].update(field="nope"), "cost.weights.field 'nope' must be a property of each element of 'contacts'"),
+    (lambda d: _contact(d).update(required=["first_name", "last_name"]), "cost.weights.field 'enrich_fields' must be a required list of each element"),
+    (lambda d: _contact(d)["properties"]["enrich_fields"].pop("uniqueItems"), "must be a required list of each element"),
+    (lambda d: _contact(d)["properties"]["enrich_fields"].update(minItems=0), "must be a required list of each element"),
+    (lambda d: _contact(d)["properties"]["enrich_fields"]["items"].pop("enum"), "its allowed values (items.enum, texts) must be exactly the keys"),
+    (lambda d: _fn(d, "submit")["cost"]["weights"]["values"].pop("contact.phones"), "must be exactly the keys of cost.weights.values"),
+    (lambda d: _fn(d, "submit")["cost"]["weights"]["values"].update({"contact.company": 2}), "must be exactly the keys of cost.weights.values"),
+], ids=["field_unknown", "field_not_required", "field_not_unique", "field_min_zero", "field_without_enum",
+        "allowed_value_without_weight", "weight_of_no_allowed_value"])
+def test_weighted_cost_rule_refuses(mutate, message):
+    description = _load(FULLENRICH)
+    mutate(description)
+    with pytest.raises(DescriptionError, match=re.escape(message)):
+        check(description, FULLENRICH)
 
 
 # --- Règle 13 : le travail asynchrone ----------------------------------------------------

@@ -279,27 +279,38 @@ export type Expectation = { readonly kind: "non_empty"; readonly refusal: string
 export type CostSettle = { readonly path: string }
 
 /**
+ * Le poids d'une valeur, à la place de `times` : chaque élément de `items` compte la somme des poids des valeurs que
+ * liste son champ `field` (une liste requise, d'au moins une valeur, sans doublon, dont les valeurs admises sont
+ * exactement les clés de `values`). Un poids est un entier d'un ou plus, dans `unit`.
+ */
+export type CostWeights = { readonly field: string; readonly values: Readonly<Record<string, number>> }
+
+/**
  * Ce que coûte un appel. Avant lui, son pire cas, calculé sur les arguments : `request` et `page`, une unité par requête
  * envoyée (une, ou chaque page d'une lecture paginée avec `all_pages`, jusqu'à `max_pages`) ; `item`, la taille de la
- * liste `items` fois celle de la liste `times` (une si absente), deux arguments requis d'au moins un élément, jamais sur
- * une fonction paginée. Après lui, `settle` : la quantité réelle, lue dans sa réponse ; absente ou illisible, on règle le
+ * liste `items` fois celle de la liste `times` (une si absente), deux arguments requis d'au moins un élément, ou la
+ * somme, sur les éléments de `items`, des poids des valeurs que chacun liste (`weights`), jamais sur une fonction paginée. Après lui, `settle` : la quantité réelle, lue dans sa réponse ; absente ou illisible, on règle le
  * pire cas. Les deux comptent `unit`, telle que l'éditeur la nomme (`credits`), exigée par `item` et `settle` ; absente,
  * des requêtes (`request`) ou des pages (`page`).
  */
 export type Cost =
   | { readonly per: "request" | "page"; readonly unit?: string; readonly settle?: CostSettle }
-  | { readonly per: "item"; readonly items: string; readonly times?: string; readonly unit: string; readonly settle?: CostSettle }
+  | { readonly per: "item"; readonly items: string; readonly times?: string; readonly unit: string; readonly settle?: CostSettle; readonly weights?: undefined }
+  | { readonly per: "item"; readonly items: string; readonly weights: CostWeights; readonly unit: string; readonly settle?: CostSettle; readonly times?: undefined }
 
 /**
  * Une fonction qui soumet un travail, relevé plus tard par `collect` (nom qualifié, une lecture du connecteur dont le seul
  * argument requis est `jobId.to`), appelée avec l'identifiant lu au chemin pointé `jobId.from` de la réponse de la
  * soumission. `withinMs` : le délai de relève après la soumission, au-delà duquel le travail est fini et sa quantité
- * lisible ; exigé quand le coût se règle (`settle`), dont la quantité se lit alors dans les réponses de la relève.
+ * lisible ; exigé quand le coût se règle (`settle`), dont la quantité se lit alors dans les réponses de la relève, sauf
+ * `noDeadline` : la référence de l'éditeur dit qu'un travail n'a pas d'échéance, et la réservation court jusqu'à la
+ * quantité lue ou jusqu'au plafond que fixe le moteur qui réserve. L'un exclut l'autre.
  */
 export type AsyncJob = {
   readonly collect: string
   readonly jobId: { readonly from: string; readonly to: string }
   readonly withinMs?: number
+  readonly noDeadline?: true
 }
 
 export type ConnectorFunction = {

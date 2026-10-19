@@ -626,7 +626,7 @@
           "$ref": "#/$defs/timeout_s"
         },
         "async": {
-          "description": "The function submits a job whose result is collected later by another function of the connector, collect, called with the job id read in the submission's response. With cost.settle, the real quantity is read in the collect's responses, within within_s.",
+          "description": "The function submits a job whose result is collected later by another function of the connector, collect, called with the job id read in the submission's response. With cost.settle, the real quantity is read in the collect's responses, within within_s, or, when the vendor's reference states that a job has no deadline, under no_deadline, until the billing service's own cap.",
           "type": "object",
           "additionalProperties": false,
           "required": ["collect", "job_id"],
@@ -643,12 +643,17 @@
               }
             },
             "within_s": {
-              "description": "Delay of collection, in seconds after the submission: by then the job is done and its quantity readable. At most one day. Required with cost.settle.",
+              "description": "Delay of collection, in seconds after the submission: by then the job is done and its quantity readable. At most one day. With cost.settle, it or no_deadline is required.",
               "type": "integer",
               "minimum": 1,
               "maximum": 86400
+            },
+            "no_deadline": {
+              "description": "The vendor's reference states that a job has no deadline: no delay of collection is declared, and a settled reservation lasts until its quantity is read or until the cap the billing service sets. Exclusive of within_s.",
+              "const": true
             }
-          }
+          },
+          "not": { "required": ["within_s", "no_deadline"] }
         },
         "scopes": {
           "description": "Only in a connector with access levels, where it is required: the scopes this function requires, all of them. It is served at a level when each is a scope of the level or implied by one. class stays: it says what the function does.",
@@ -771,7 +776,7 @@
           }
         },
         "cost": {
-          "description": "What a call costs. Before the call, its worst case from the arguments: one per request sent (request, page: each page of a paginated read is a request), or, per item, the size of the items argument times the size of the times argument. After the call, settle reads the real quantity in the response. Both count the same unit.",
+          "description": "What a call costs. Before the call, its worst case from the arguments: one per request sent (request, page: each page of a paginated read is a request), or, per item, the size of the items argument times the size of the times argument, or the sum over the items of the weights of the values each lists (weights). After the call, settle reads the real quantity in the response. Both count the same unit.",
           "type": "object",
           "additionalProperties": false,
           "required": ["per"],
@@ -784,6 +789,22 @@
             "times": {
               "description": "per: item only: another list argument whose size multiplies the count of items. Required in the input, at least one element.",
               "$ref": "#/$defs/identifier"
+            },
+            "weights": {
+              "description": "per: item only, exclusive of times: each element of items counts the sum of the weights of the values it lists in its own field, a list of values each of which has an integer weight of one or more in unit. The field is required in each element, a list of at least one element, unique values, every allowed value (its enum) weighted and nothing else.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["field", "values"],
+              "properties": {
+                "field": { "description": "The list field of each element of items that holds the values.", "$ref": "#/$defs/identifier" },
+                "values": {
+                  "description": "Weight of each allowed value, in unit: an integer of one or more.",
+                  "type": "object",
+                  "minProperties": 1,
+                  "propertyNames": { "minLength": 1 },
+                  "additionalProperties": { "type": "integer", "minimum": 1 }
+                }
+              }
             },
             "unit": {
               "description": "What the quantity counts, as the vendor names it: credits, contacts, fields. Required per item or with settle; absent, requests (per: request) or pages (per: page).",
@@ -802,8 +823,8 @@
           "allOf": [
             {
               "if": { "properties": { "per": { "const": "item" } } },
-              "then": { "required": ["items", "unit"] },
-              "else": { "not": { "anyOf": [{ "required": ["items"] }, { "required": ["times"] }] } }
+              "then": { "required": ["items", "unit"], "not": { "required": ["times", "weights"] } },
+              "else": { "not": { "anyOf": [{ "required": ["items"] }, { "required": ["times"] }, { "required": ["weights"] }] } }
             },
             {
               "if": { "required": ["settle"] },
@@ -834,9 +855,9 @@
           "then": { "required": ["confirm"] }
         },
         {
-          "$comment": "An asynchronous function whose cost is settled says within how long its quantity is collected.",
+          "$comment": "An asynchronous function whose cost is settled says within how long its quantity is collected, or that the vendor sets no deadline.",
           "if": { "required": ["async", "cost"], "properties": { "cost": { "required": ["settle"] } } },
-          "then": { "properties": { "async": { "required": ["within_s"] } } }
+          "then": { "properties": { "async": { "anyOf": [{ "required": ["within_s"] }, { "required": ["no_deadline"] }] } } }
         }
       ]
     },

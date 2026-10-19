@@ -72,8 +72,9 @@ pas dire :
    en est le seul argument requis (la relève se fait sans rien d'autre que
    l'identifiant du travail) ; quand le coût se règle (`settle`), la quantité se lit
    dans les réponses de la relève : elle n'est pas paginée et ne déclare pas de
-   `settle` à elle ; le délai de relève (`within_s`, exigé par le schéma dans ce cas)
-   est plus long que le délai de la soumission, quand il est déclaré ;
+   `settle` à elle ; le délai de relève (`within_s`, exigé par le schéma dans ce cas,
+   sauf `no_deadline` quand la référence de l'éditeur dit qu'un travail n'a pas
+   d'échéance) est plus long que le délai de la soumission, quand il est déclaré ;
 14. les fichiers (`call.files`, une partie d'un corps multipart par argument qui
    porte l'identifiant d'un fichier en transit de l'appelant) : la méthode envoie un
    corps (`POST`, `PUT`, `PATCH`) ; la fonction n'est pas paginée ; chaque argument
@@ -81,7 +82,13 @@ pas dire :
    n'est ni un nom de `body` ni une constante de corps (une partie, une valeur) ;
 15. la donnée personnelle (`personal`) : dans l'entrée, sur une propriété seulement,
    jamais à la racine, et toujours `true` ; jamais dans le schéma de la sortie, où elle
-   ne voudrait rien dire. L'hôte ne journalise pas sa valeur.
+   ne voudrait rien dire. L'hôte ne journalise pas sa valeur ;
+16. le poids d'une valeur (`cost.weights`, à la place de `times`) : `field` nomme un
+   champ de chaque élément de `items`, requis dans l'élément, une liste d'au moins un
+   élément aux valeurs uniques, dont les valeurs admises (`enum`) sont exactement les
+   clés de la table de poids : une valeur sans poids est refusée par le schéma
+   d'entrée, avant l'appel, jamais comptée pour rien, et un poids ne vaut que pour une
+   valeur admise.
 
 Un fichier fautif lève `DescriptionError`, qui nomme le fichier, la fonction et la
 règle : la fabrique ne génère alors rien.
@@ -295,15 +302,43 @@ def _check_cost_list(function: dict, key: str, where: str) -> None:
         )
 
 
+def _check_cost_weights(function: dict, where: str) -> None:
+    """Règle 16, le poids d'une valeur : le champ qui porte les valeurs est, dans chaque élément de `items`, une liste requise
+    d'au moins un élément, aux valeurs uniques, dont les valeurs admises sont exactement les clés de la table."""
+    cost = function["cost"]
+    field = cost["weights"]["field"]
+    element = function["input"]["properties"][cost["items"]].get("items")
+    prefix = f"{where}: function {function['name']}: cost.weights.field {field!r}"
+    if not isinstance(element, dict) or not isinstance(element.get("properties"), dict) or field not in element["properties"]:
+        raise DescriptionError(f"{prefix} must be a property of each element of {cost['items']!r} (an object schema)")
+    schema = element["properties"][field]
+    listed = (schema.get("type") == "array" and isinstance(schema.get("minItems"), int) and schema["minItems"] >= 1
+              and schema.get("uniqueItems") is True)
+    if not listed or field not in element.get("required", []):
+        raise DescriptionError(
+            f"{prefix} must be a required list of each element (type: array, minItems 1 or more, uniqueItems: true), "
+            "so that each element counts at least one weight, each value once"
+        )
+    allowed = schema.get("items", {}).get("enum") if isinstance(schema.get("items"), dict) else None
+    table = set(cost["weights"]["values"])
+    if not isinstance(allowed, list) or not all(isinstance(v, str) for v in allowed) or set(allowed) != table:
+        raise DescriptionError(
+            f"{prefix}: its allowed values (items.enum, texts) must be exactly the keys of cost.weights.values "
+            f"({', '.join(sorted(table))}), so that a value without a weight is refused before the call"
+        )
+
+
 def check_cost(function: dict, where: str) -> None:
     """Règle 12 : le coût à l'élément compte des listes requises et non vides, distinctes ; ni l'élément ni la quantité
-    relue sur une fonction paginée."""
+    relue sur une fonction paginée. Les valeurs pesées dans chaque élément sont la règle 16."""
     cost = function.get("cost")
     if cost is None:
         return
     name = function["name"]
     if cost["per"] == "item":
         _check_cost_list(function, "items", where)
+        if "weights" in cost:
+            _check_cost_weights(function, where)
         if "times" in cost:
             if cost["times"] == cost["items"]:
                 raise DescriptionError(f"{where}: function {name}: cost.times names the items argument {cost['items']!r} again")
