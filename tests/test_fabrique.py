@@ -149,6 +149,19 @@ def test_connector_carries_headers_rate_and_probe():
     assert 'probe: { function: "pennylane.get_company", nonEmpty: ["scopes"] },' in pennylane
 
 
+def test_probe_carries_its_balance():
+    """Une sonde à solde porte son chemin, son seuil et son unité ; une sonde sans solde ne change pas."""
+    description = _load(PENNYLANE)
+    _fn(description, "get_company").pop("cost")
+    description["connector"]["probe"]["balance"] = {"path": "credits.remaining", "min": 1, "unit": "credits"}
+    source = connector_module(check(description, PENNYLANE)).source
+    assert ('probe: { function: "pennylane.get_company", nonEmpty: ["scopes"], '
+            'balance: { path: "credits.remaining", min: 1, unit: "credits" } },') in source
+    description["connector"]["probe"] = {"function": "get_company", "balance": {"path": "a.0.b", "min": 0.5, "unit": "EUR"}}
+    source = connector_module(check(description, PENNYLANE)).source
+    assert 'probe: { function: "pennylane.get_company", nonEmpty: [], balance: { path: "a.0.b", min: 0.5, unit: "EUR" } },' in source
+
+
 def test_request_carries_constants_encoding_and_stop_flag():
     source = function_source("pennylane", _pennylane("list_customers"))
     assert 'encode: {"filter": "json"},' in source
@@ -200,13 +213,23 @@ def _fn(d, name):
      "probe 'get_product' must be a read function with a call and no required argument"),
     (PENNYLANE, lambda d: d["connector"]["probe"].update(function="create_customer"),
      "probe 'create_customer' must be a read function"),
+    (PENNYLANE, lambda d: d["connector"]["probe"].update(balance={"path": "credits.remaining", "min": 1, "unit": "credits"}),
+     "probe 'get_company' reads a balance, so it must declare no cost"),
 ], ids=["constant_and_argument", "header_and_auth", "header_case", "encode_unplaced", "check_refusal",
-        "check_fields", "check_not_a_list", "expect_refusal", "probe_unknown", "probe_required", "probe_write"])
+        "check_fields", "check_not_a_list", "expect_refusal", "probe_unknown", "probe_required", "probe_write",
+        "probe_balance_with_cost"])
 def test_added_rules_refuse(path, mutate, message):
     description = _load(path)
     mutate(description)
     with pytest.raises(DescriptionError, match=re.escape(message)):
         check(description, path)
+
+
+def test_probe_without_balance_may_cost():
+    """Le coût n'est refusé qu'à la fonction d'une sonde qui lit un solde."""
+    description = _load(PENNYLANE)
+    assert _fn(description, "get_company")["cost"] == {"per": "request"}
+    check(description, PENNYLANE)
 
 
 # --- Comptes : réglages, adresses par réglage, clé en query, consentement ------------

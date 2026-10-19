@@ -545,3 +545,43 @@ def test_invalid_account_signal_is_rejected(mutate):
     mutate(description)
     with pytest.raises(ValidationError):
         _validate(description)
+
+
+# --- Sonde à solde ---------------------------------------------------------------------
+
+
+def _balance(d, **balance):
+    """Une sonde qui lit le solde d'un compte payant."""
+    d["connector"]["probe"] = {"function": "list_estimates", "balance": {"path": "credits.remaining", "min": 1, "unit": "credits", **balance}}
+
+
+def test_probe_balance_base_is_valid():
+    """Les variantes ci-dessous partent d'une description valide : chacune n'échoue que par sa faute."""
+    description = _sellsy()
+    _balance(description)
+    _validate(description)
+    _balance(description, path="accounts.0.balance", min=0.5)
+    _validate(description)
+    _balance(description, min=0)
+    _validate(description)
+
+
+@pytest.mark.parametrize("mutate", [
+    lambda d: _balance(d, path=""),
+    lambda d: _balance(d, path=".credits"),
+    lambda d: _balance(d, path="credits."),
+    lambda d: _balance(d, path="credits..remaining"),
+    lambda d: _balance(d, path="credits remaining"),
+    lambda d: _balance(d, min="1"),
+    lambda d: _balance(d, min=-1),
+    lambda d: _balance(d, unit=""),
+    lambda d: _balance(d, covers="quota"),
+    lambda d: d["connector"].update(probe={"function": "list_estimates", "balance": {"path": "credits", "unit": "credits"}}),
+    lambda d: d["connector"].update(probe={"function": "list_estimates", "balance": {"path": "credits", "min": 1}}),
+], ids=["empty_path", "leading_dot", "trailing_dot", "empty_segment", "space_in_path", "min_not_a_number", "min_negative",
+        "empty_unit", "unknown_key", "without_min", "without_unit"])
+def test_invalid_probe_balance_is_rejected(mutate):
+    description = _sellsy()
+    mutate(description)
+    with pytest.raises(ValidationError):
+        _validate(description)

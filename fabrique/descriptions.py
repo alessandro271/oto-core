@@ -20,8 +20,9 @@ pas dire :
 4. chaque contrôle (`checks`, `expect`) nomme un refus de sa fonction ; `equal_sums`
    porte sur un argument liste dont les éléments déclarent les deux champs ;
 5. la sonde, et l'identité d'un `oauth2_user` lue par une fonction, nomment une
-   fonction de lecture du connecteur, appelée par `call`, sans argument requis ;
-   l'identité lue à une adresse complète exige des droits que le consentement
+   fonction de lecture du connecteur, appelée par `call`, sans argument requis ; la
+   fonction d'une sonde qui lit un solde (`balance`) ne déclare pas de coût (`cost`) :
+   on ne paie pas pour savoir si l'on peut payer ; l'identité lue à une adresse complète exige des droits que le consentement
    demande (ses `scopes`, quand le connecteur n'a pas de niveaux ; à chaque niveau
    sinon, règle 7) ;
 6. les réglages : un nom n'est déclaré qu'une fois parmi `credential`, `settings` et
@@ -321,10 +322,16 @@ def _plain_read(data: dict, role: str, name: str, where: str) -> None:
 
 
 def check_probe(data: dict, where: str) -> None:
-    """Règle 5 : la sonde et l'identité d'un consentement sont des lectures par `call`, appelables sans argument."""
+    """Règle 5 : la sonde et l'identité d'un consentement sont des lectures par `call`, appelables sans argument ; la
+    fonction d'une sonde qui lit un solde ne coûte rien."""
     probe = data["connector"].get("probe")
     if probe is not None:
         _plain_read(data, "probe", probe["function"], where)
+        function = next(f for f in data["functions"] if f["name"] == probe["function"])
+        if "balance" in probe and "cost" in function:
+            raise DescriptionError(
+                f"{where}: probe {probe['function']!r} reads a balance, so it must declare no cost: one never pays to learn whether one can pay"
+            )
     auth = data["connector"]["auth"]
     identity = auth.get("identity")
     if identity is not None and "function" in identity:

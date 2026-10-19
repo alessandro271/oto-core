@@ -302,6 +302,9 @@ export type ConnectorFunction = {
   readonly confirm?: { readonly summary: string }
 }
 
+/** Où lire le solde d'un compte payant dans la réponse de la sonde, et le seuil sous lequel elle n'est pas saine. */
+export type ProbeBalance = { readonly path: string; readonly min: number; readonly unit: string }
+
 export type Connector = {
   readonly name: string
   readonly label: string
@@ -335,9 +338,11 @@ export type Connector = {
   readonly errors: readonly ApiError[]
   /**
    * La sonde d'une connexion : `function` (nom qualifié, une lecture sans argument requis) appelée avec `{}`, jamais
-   * décomptée d'un quota ; chaque chemin de `nonEmpty` doit être présent et non vide dans sa réponse.
+   * décomptée d'un quota ; chaque chemin de `nonEmpty` doit être présent et non vide dans sa réponse. `balance`, le
+   * solde d'un compte payant : un nombre au chemin `path` de sa réponse, sain à `min` ou au-dessus, en `unit` ; sous
+   * `min`, absent ou qui n'est pas un nombre, la sonde n'est pas saine. Sa fonction ne déclare alors aucun coût.
    */
-  readonly probe?: { readonly function: string; readonly nonEmpty: readonly string[] }
+  readonly probe?: { readonly function: string; readonly nonEmpty: readonly string[]; readonly balance?: ProbeBalance }
   readonly exposure?: { readonly mode?: "per_action" | "per_connector" | "via_call"; readonly tool?: string }
   /** Les fonctions générées ; une fonction que la fabrique ne sait pas traduire n'y est pas. */
   readonly functions: readonly ConnectorFunction[]

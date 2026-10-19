@@ -287,7 +287,10 @@ def connector_module(description: Description) -> Module:
     entries.append(("errors", _errors(connector["errors"])))
     if "probe" in connector:
         probe = connector["probe"]
-        entries.append(("probe", "{ function: " + js(f"{name}.{probe['function']}") + ", nonEmpty: " + js(probe.get("non_empty", [])) + " }"))
+        balance = probe.get("balance")
+        reads = "" if balance is None else (
+            ", balance: { path: " + js(balance["path"]) + ", min: " + js(balance["min"]) + ", unit: " + js(balance["unit"]) + " }")
+        entries.append(("probe", "{ function: " + js(f"{name}.{probe['function']}") + ", nonEmpty: " + js(probe.get("non_empty", [])) + reads + " }"))
     if "exposure" in data:
         entries.append(("exposure", js(data["exposure"])))
     entries.append(("functions", _list(exported, 1)))
