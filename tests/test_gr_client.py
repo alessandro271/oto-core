@@ -87,3 +87,18 @@ def test_empty_query_is_refused_before_any_call(api):
     with pytest.raises(ValueError):
         GrClient().lookup("  ")
     assert api["calls"] == []
+
+
+def test_a_vies_outage_answered_200_is_named_not_read_as_invalid(api):
+    down = {"isValid": False, "userError": "MS_UNAVAILABLE", "address": "---"}
+    api["routes"] = [(_AUTO, _auto([_MATCH])), (_VIES, _Resp(200, down))]
+    row = GrClient().lookup("ACME")["results"][0]
+    assert "vat_valid" not in row and "address" not in row
+    assert row["vat_check_error"] == "VIES unavailable (MS_UNAVAILABLE)"
+
+
+def test_an_invalid_number_is_a_verdict(api):
+    api["routes"] = [(_AUTO, _auto([_MATCH])),
+                     (_VIES, _Resp(200, {"isValid": False, "userError": "INVALID", "address": "---"}))]
+    row = GrClient().lookup("ACME")["results"][0]
+    assert row["vat_valid"] is False and row["address"] is None and "vat_check_error" not in row

@@ -40,6 +40,11 @@ def _norm(m: dict) -> dict:
     }
 
 
+class ViesUnavailable(RuntimeError):
+    """VIES gave no verdict (`userError` other than VALID / INVALID): the member state's
+    register is down or busy. Never an invalid number."""
+
+
 class GrClient:
     """GEMI register (autocomplete) + VIES. No credential."""
 
@@ -66,8 +71,14 @@ class GrClient:
         r = self.session.get(self.VIES_URL.format(vat=quote(afm, safe="")), timeout=_TIMEOUT)
         raise_for_upstream(r, service="vies")
         d = r.json()
-        return {"valid": bool(d.get("isValid")),
-                "address": (d.get("address") or "").replace("\n", " ").strip() or None}
+        # VIES answers 200 when the member state's register is down: `isValid` is then
+        # false and `userError` names the outage. Only VALID / INVALID are verdicts.
+        verdict = d.get("userError") or ("VALID" if d.get("isValid") else "INVALID")
+        if verdict not in ("VALID", "INVALID"):
+            raise ViesUnavailable(verdict)
+        address = (d.get("address") or "").replace("\n", " ").strip()
+        return {"valid": verdict == "VALID",
+                "address": None if address in ("", "---") else address}
 
     def lookup(self, query: str) -> dict:
         """A Greek entity by company name, GEMI no. or VAT no. (ΑΦΜ, with or without `EL`).
@@ -98,7 +109,8 @@ class GrClient:
             vies = self.vat(row["afm"])
         except Exception as e:
             # The enrichment is optional: its failure is named, the lookup still answers.
-            row["vat_check_error"] = f"VIES unavailable ({type(e).__name__})"
+            detail = str(e) if isinstance(e, ViesUnavailable) else type(e).__name__
+            row["vat_check_error"] = f"VIES unavailable ({detail})"
             return
         row["address"] = vies["address"]
         row["vat_valid"] = vies["valid"]
