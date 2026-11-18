@@ -28,6 +28,7 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 | `dataforseo` | DataForSEO | 1.0.4 | clé | oui | 62 | 59 | 3 | 0 | oui, avec solde | 50 | non | 0 |
 | `dropcontact` | Dropcontact | 1.0.0 | clé | oui | 3 | 2 | 1 | 0 | oui, avec solde | 1 | non | 0 |
 | `elevenlabs` | ElevenLabs | 1.0.1 | clé | non | 4 | 4 | 0 | 0 | oui | 4 | non | 0 |
+| `fillout` | Fillout | 1.0.0 | clé | non | 8 | 4 | 1 | 3 | oui | 8 | non | 0 |
 | `fod` | France Open Data | 1.5.0 | clé | oui | 31 | 31 | 0 | 0 | oui | 31 | non | 0 |
 | `folk` | folk | 1.0.1 | clé | non | 62 | 23 | 21 | 18 | oui | 62 | non | 0 |
 | `fullenrich` | FullEnrich | 1.0.0 | clé | oui | 2 | 1 | 1 | 0 | non | 1 | non | 0 |
@@ -75,7 +76,7 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 | `typeform` | Typeform | 1.2.0 | clé | non | 12 | 6 | 1 | 5 | non | 12 | non | 0 |
 | `wttj_ats` | Welcome to the Jungle ATS | 1.0.0 | clé | non | 10 | 7 | 3 | 0 | non | 0 | non | 0 |
 | `yousign` | Yousign | 1.1.1 | clé | non | 13 | 5 | 7 | 1 | oui | 0 | non | 0 |
-| **total : 60** |  |  |  |  | 1457 | 911 | 338 | 208 |  | 977 |  | 0 |
+| **total : 61** |  |  |  |  | 1465 | 915 | 339 | 211 |  | 985 |  | 0 |
 
 ## Par type
 
@@ -86,4 +87,4 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 | compte de service (assertion signée) | 1 | 6 |
 | clé de l'hôte | 2 | 29 |
 | sans clé | 0 | 0 |
-| clé | 47 | 1345 |
+| clé | 48 | 1353 |
