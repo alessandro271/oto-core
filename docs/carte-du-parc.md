@@ -35,7 +35,7 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 | `google_calendar` | Google Calendar | 1.0.0 | connexion d'une personne (OAuth) | non | 7 | 4 | 0 | 3 | non | 7 | oui | 0 |
 | `google_drive` | Google Drive | 1.0.0 | connexion d'une personne (OAuth) | non | 12 | 5 | 4 | 3 | non | 12 | oui | 0 |
 | `google_search_console` | Google Search Console | 1.1.0 | compte de service (assertion signée) | non | 6 | 5 | 1 | 0 | oui | 6 | oui | 0 |
-| `google_sheets` | Google Sheets | 1.0.0 | connexion d'une personne (OAuth) | non | 5 | 2 | 2 | 1 | non | 5 | oui | 0 |
+| `google_sheets` | Google Sheets | 1.0.1 | connexion d'une personne (OAuth) | non | 5 | 2 | 2 | 1 | non | 5 | oui | 0 |
 | `granola` | Granola | 1.0.0 | clé | non | 8 | 5 | 2 | 1 | oui | 8 | non | 0 |
 | `heyreach` | HeyReach | 1.0.1 | clé | non | 32 | 20 | 4 | 8 | oui | 0 | non | 0 |
 | `higgsfield` | Higgsfield | 1.1.0 | clé | non | 5 | 2 | 2 | 1 | oui | 5 | non | 0 |
