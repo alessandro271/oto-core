@@ -74,3 +74,13 @@ def test_a_beneficiary_is_personal_data():
         properties = _functions()[name]["input"]["properties"]
         assert properties["beneficiaire"].get("personal") is True, name
         assert properties["rpps"].get("personal") is True, name
+
+
+def test_country_codes_stay_text_under_yaml_1_1():
+    """PyYAML lit `NO` (Norvège) comme un booléen s'il n'est pas entre guillemets."""
+    functions = _functions()
+    codes = [functions["health_search_eu_clinical_trials"]["input"]["properties"]["pays"]["items"]["enum"],
+             functions["health_get_eu_clinical_trial"]["input"]["properties"]["pays"]["enum"]]
+    for enum in codes:
+        assert "NO" in enum
+        assert all(isinstance(code, str) for code in enum)
