@@ -53,7 +53,8 @@ DESCRIPTION = {'connector': {'name': 'alma',
                                'deferred_months, deferred_days, refunds. Filters: created_after, '
                                'created_before (POSIX seconds, inclusive), state. Up to limit payments per '
                                'page (100 at most); when has_more is true, pass the id of the last payment '
-                               'as starting_after. Customer identity and addresses are never given.',
+                               'as starting_after. Customer identity, addresses, the seller and the '
+                               "merchant's free-form data are never given.",
                 'input': {'type': 'object',
                           'additionalProperties': False,
                           'properties': {'created_after': {'type': 'integer',
@@ -101,7 +102,9 @@ DESCRIPTION = {'connector': {'name': 'alma',
                                      'shipping_address',
                                      'billing_address',
                                      'url',
-                                     'seller.email',
+                                     'seller',
+                                     'custom_data',
+                                     'cart',
                                      'orders.customer_url']},
                 'cost': {'per': 'request'}},
                {'name': 'get_payment',
@@ -111,10 +114,10 @@ DESCRIPTION = {'connector': {'name': 'alma',
                                'cents), kind and installments_count, processing_status and '
                                'cancelation_reason, created, expired_at, the installment plan (payment_plan: '
                                'due_date, date_paid, state pending, paid or covered, amounts), deferred '
-                               'capture, orders (merchant_reference), custom_data and cart as the merchant '
-                               'sent them, refunds (amount_already_refunded, is_completely_refunded), '
-                               'payout. Customer identity, addresses and the payment page address are never '
-                               'given.',
+                               'capture, orders (merchant_reference), refunds (amount_already_refunded, '
+                               'is_completely_refunded), payout. Customer identity, addresses, the seller, '
+                               "the merchant's free-form data (custom_data, cart) and the payment page "
+                               'address are never given.',
                 'input': {'type': 'object',
                           'additionalProperties': False,
                           'required': ['payment_id'],
@@ -129,7 +132,9 @@ DESCRIPTION = {'connector': {'name': 'alma',
                                      'shipping_address',
                                      'billing_address',
                                      'url',
-                                     'seller.email',
+                                     'seller',
+                                     'custom_data',
+                                     'cart',
                                      'orders.customer_url']},
                 'cost': {'per': 'request'}},
                {'name': 'list_balance_transactions',

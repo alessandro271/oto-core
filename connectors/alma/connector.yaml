@@ -10,10 +10,11 @@
 # can move money, so this connector never declares a write, and an act side does not exist.
 #
 # No customer data reaches the agent. A payment carries its customer (name, email, phone, business id), a shipping
-# and a billing address, the email of the seller who took it, the address of its Alma page (a summary of the payment
-# once paid) and, on each order, the customer's tracking page: all are stripped (output.strip). The customer_email
-# filter of the payments list is not described, for the same reason: no function looks a person up. custom_data and
-# cart stay: they hold what the merchant sent with the payment (an order or invoice reference), to be read as such.
+# and a billing address, the seller who took it (a person of the merchant: name, display name, email), the address of
+# its Alma page (a summary of the payment once paid) and, on each order, the customer's tracking page; custom_data and
+# cart are free-form data of the merchant, which often hold the customer's name or email. All are stripped
+# (output.strip). The order or invoice reference stays readable in orders.merchant_reference. The customer_email
+# filter of the payments list is not described, for the same reason: no function looks a person up.
 #
 # Account: the merchant's API key, in the header "Authorization: Alma-Auth <key>". Live keys are made in the Alma
 # dashboard, Settings, API configuration; the sandbox (api.sandbox.getalma.eu) has its own keys and its own data, and
@@ -70,7 +71,7 @@ functions:
       installment: due_date, date_paid, state, amounts), orders (merchant_reference), origin, deferred_months,
       deferred_days, refunds. Filters: created_after, created_before (POSIX seconds, inclusive), state. Up to limit
       payments per page (100 at most); when has_more is true, pass the id of the last payment as starting_after.
-      Customer identity and addresses are never given.
+      Customer identity, addresses, the seller and the merchant's free-form data are never given.
     input:
       type: object
       additionalProperties: false
@@ -95,7 +96,7 @@ functions:
         starting_after: starting_after
     output:
       items: data
-      strip: &payment_strip [customer, shipping_address, billing_address, url, seller.email, orders.customer_url]
+      strip: &payment_strip [customer, shipping_address, billing_address, url, seller, custom_data, cart, orders.customer_url]
       sample:
         data:
           - id: payment_0
@@ -106,6 +107,8 @@ functions:
             billing_address: { line1: 1 rue de Test }
             url: "https://pay.example.test/payment_0"
             seller: { id: user_0, name: Seller, email: seller@example.test }
+            custom_data: { invoice: inv-0 }
+            cart: { items: [] }
             orders: [{ id: order_0, merchant_reference: inv-0, customer_url: "https://shop.example.test/o/0" }]
         has_more: false
     cost: &request { per: request }
@@ -116,9 +119,9 @@ functions:
       One payment of the merchant account: amounts (purchase_amount, fees.merchant, customer_fee, customer_interest,
       annual_interest_rate, cents), kind and installments_count, processing_status and cancelation_reason, created,
       expired_at, the installment plan (payment_plan: due_date, date_paid, state pending, paid or covered, amounts),
-      deferred capture, orders (merchant_reference), custom_data and cart as the merchant sent them, refunds
-      (amount_already_refunded, is_completely_refunded), payout. Customer identity, addresses and the payment page
-      address are never given.
+      deferred capture, orders (merchant_reference), refunds (amount_already_refunded, is_completely_refunded),
+      payout. Customer identity, addresses, the seller, the merchant's free-form data (custom_data, cart) and the
+      payment page address are never given.
     input:
       type: object
       additionalProperties: false
@@ -140,6 +143,8 @@ functions:
         billing_address: { line1: 1 rue de Test }
         url: "https://pay.example.test/payment_0"
         seller: { id: user_0, name: Seller, email: seller@example.test }
+        custom_data: { invoice: inv-0 }
+        cart: { items: [] }
         orders: [{ id: order_0, merchant_reference: inv-0, customer_url: "https://shop.example.test/o/0" }]
     cost: *request
 

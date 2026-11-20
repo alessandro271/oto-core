@@ -3,7 +3,7 @@
 Gardes : chaque fonction est une lecture (`class: read`, jamais `act`) servie par un `GET`, et aucune route qui crée,
 annule, capture ou rembourse un paiement, ni n'envoie un lien de paiement, n'est décrite (la clé d'Alma n'a pas de
 portée : elle peut déplacer de l'argent) ; aucune fonction ne cherche une personne ; l'identité du client, ses
-adresses, le courriel du vendeur et les adresses ouvertes sans connexion (page du paiement, suivi de commande) ne
+adresses, le vendeur, les données libres du marchand (`custom_data`, `cart`) et les adresses ouvertes sans connexion (page du paiement, suivi de commande) ne
 sortent jamais vers l'agent, ce que prouve la sortie servie sur une réponse simulée.
 """
 from __future__ import annotations
@@ -18,7 +18,7 @@ from oto.connectors import serve
 
 ALMA = CONNECTORS / "alma" / "connector.yaml"
 PAYMENT_READERS = {"list_payments", "get_payment"}
-PERSONAL = {"customer", "shipping_address", "billing_address", "url"}
+PERSONAL = {"customer", "shipping_address", "billing_address", "url", "seller", "custom_data", "cart"}
 
 
 def _description() -> dict:
@@ -43,18 +43,18 @@ def _payment() -> dict:
         "url": "https://pay.example.test/payment_0",
         "seller": {"id": "user_0", "name": "Seller", "display_name": "S", "email": "seller@example.test"},
         "orders": [{"id": "order_0", "merchant_reference": "inv-0", "customer_url": "https://shop.example.test/o/0"}],
-        "custom_data": {"invoice": "inv-0"},
+        "custom_data": {"customer_name": "Jane Doe", "invoice": "inv-0"},
+        "cart": {"items": [{"title": "Item", "customer_email": "jane@example.test"}]},
     }
 
 
 def _assert_without_personal_data(payment: dict):
     assert PERSONAL.isdisjoint(payment), sorted(PERSONAL & payment.keys())
-    assert "email" not in payment["seller"]
     assert all("customer_url" not in order for order in payment["orders"])
     assert "jane@example.test" not in repr(payment) and "seller@example.test" not in repr(payment)
     assert payment["orders"][0]["merchant_reference"] == "inv-0"
     assert payment["payment_plan"][0]["date_paid"] == 1790805600
-    assert payment["custom_data"] == {"invoice": "inv-0"}
+    assert "Jane" not in repr(payment) and "Seller" not in repr(payment)
 
 
 def test_description_passes_the_fabrique():
