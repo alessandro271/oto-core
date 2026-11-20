@@ -30,8 +30,11 @@ returned unchanged.
   (`{"type": "description", "pricing_description": …}`). `price_of` reads a
   dollar amount out of either, or says it cannot. GPT Image 2.5
   (`marketing-studio/image/flare`, `/sunburst`) gives only per-1M-token rates:
-  `price_of` answers the charge measured per quality and resolution, with no
-  margin, not the job's own charge, which no endpoint reports per job.
+  `price_of` answers the charge measured for the job's shape, quality and
+  resolution, with no margin, and refuses (`higgsfield_price_unknown`) a
+  combination that was not measured. No endpoint reports a job's own charge:
+  `GET /models/usage` sums completed jobs by model and time bucket (an hour at
+  the finest).
 - **A submission carries an `Idempotency-Key`** (a fresh UUID unless the caller
   gives one): repeating it with the same key returns the original request
   instead of a second job; the same key with other parameters answers 422. The
@@ -83,27 +86,39 @@ _RATE = re.compile(r"\$(\d+(?:\.\d+)?)(?: per second of generated video)? at (\d
 
 # GPT Image 2.5 (`marketing-studio/image/flare` and `/sunburst`) answers its
 # estimate with per-1M-token rates and no amount, and no job status says what
-# was charged. Its charge was MEASURED instead, job by job, from Higgsfield's
-# usage report (`GET /models/usage`) on 2026-11-09, 17 jobs: the same
+# was charged. Its charge was MEASURED instead on 2026-11-09, 17 jobs, each run
+# alone in its own bucket of Higgsfield's usage report (`GET /models/usage`,
+# which sums completed jobs by model and time bucket, never by job): the same
 # parameters cost the same to the hundredth of a cent; sunburst bills like
-# flare; a square output is the dearest shape (3:2 and 21:9 cost less, `auto`
-# and no `aspect_ratio` cost what 1:1 does); each reference image adds $0.0130.
-# The sentence is recognised by these exact rates: if Higgsfield changes them,
-# the measures no longer hold and the job is not priced.
+# flare; no `aspect_ratio` costs what 1:1 does. Every job had the same short
+# prompt (about 90 characters), whose text tokens are inside each charge.
+# Only a measured combination is priced: any other is refused, never priced
+# at a neighbour. The sentence is recognised by these exact rates: if
+# Higgsfield changes them, the measures no longer hold and the job is refused.
 _TOKEN_RATES = {"text input": 5.0, "image input": 8.0, "image output": 30.0}
 _TOKEN_RATE = re.compile(r"(?<!cached )(text input|text output|image input|image output) \$(\d+(?:\.\d+)?)")
-# quality -> resolution -> USD charged for one 1:1 image with a short prompt.
-# A resolution not measured for a quality is priced at that quality's 4k.
+PRICE_UNKNOWN = "higgsfield_price_unknown"
+# (aspect_ratio, quality, resolution) -> USD charged for one image, short
+# prompt, no reference image. Resolution None: no `resolution` in the body.
 _GPT_IMAGE_CHARGE = {
-    "low": {"4k": 0.0304},
-    "medium": {"4k": 0.0552},
-    "high": {"1k": 0.0634, "2k": 0.1177, "4k": 0.1886},
-    "xhigh": {"4k": 0.3269},
-    "max": {"1k": 0.2214, "4k": 0.7222},
+    ("1:1", "low", None): 0.0226,
+    ("1:1", "low", "4k"): 0.0304,
+    ("1:1", "medium", "4k"): 0.0552,
+    ("1:1", "high", "1k"): 0.0634,
+    ("1:1", "high", "2k"): 0.1177,
+    ("1:1", "high", "4k"): 0.1886,
+    ("1:1", "xhigh", "4k"): 0.3269,
+    ("1:1", "max", "1k"): 0.2214,
+    ("1:1", "max", "4k"): 0.7222,
+    ("auto", "low", "4k"): 0.0305,
+    ("3:2", "low", "4k"): 0.0241,
+    ("21:9", "high", "4k"): 0.0736,
 }
-_GPT_IMAGE_RESOLUTIONS = ("1k", "2k", "4k")
+# The same key -> USD added by each image of `image_urls` (1 and 4 references
+# measured: +$0.0129 and +$0.0520). Measured at one combination only.
+_GPT_IMAGE_PER_REFERENCE = {("1:1", "high", "4k"): 0.0130}
 _GPT_IMAGE_DEFAULT_QUALITY = "high"  # "Quality defaults to high", in the sentence itself
-_GPT_IMAGE_PER_REFERENCE = 0.0130
+_GPT_IMAGE_DEFAULT_SHAPE = "1:1"  # no `aspect_ratio` was measured to cost what 1:1 does
 _GPT_IMAGE_MEASURED_ON = "2026-11-09"
 
 
@@ -141,43 +156,46 @@ def _video_input(params: Dict[str, Any]) -> bool:
     return False
 
 
+def _gpt_image_combination(key: tuple) -> str:
+    shape, quality, resolution = key
+    return f"{shape} {quality} {resolution or '(no resolution)'}"
+
+
+def _gpt_image_refused(why: str) -> Dict[str, Any]:
+    return {"usd": None, "approximate": False, "basis": f"{PRICE_UNKNOWN}: {why}"}
+
+
 def _price_of_gpt_image(sentence: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """The measured charge of a GPT Image 2.5 job, or None when `sentence` is
-    not its per-1M-token price sentence (with the rates the measures were made at)."""
+    not its per-1M-token price sentence. A combination of shape, quality,
+    resolution and reference images not measured is refused (`usd` None, the
+    basis naming `higgsfield_price_unknown` and the measured combinations)."""
     if not sentence.lstrip().lower().startswith("per 1m tokens"):
         return None
     rates = {name: float(rate) for name, rate in _TOKEN_RATE.findall(sentence)}
     if any(rates.get(name) != rate for name, rate in _TOKEN_RATES.items()):
-        return {"usd": None, "approximate": False,
-                "basis": "a per-token price sentence whose rates differ from the measured GPT Image 2.5 ones"}
-    quality = params.get("quality", _GPT_IMAGE_DEFAULT_QUALITY)
-    if quality not in _GPT_IMAGE_CHARGE:
-        return {"usd": None, "approximate": False,
-                "basis": f"no measured charge for quality {quality!r} (measured: {', '.join(_GPT_IMAGE_CHARGE)})"}
-    resolution = params.get("resolution")
-    if resolution is not None and resolution not in _GPT_IMAGE_RESOLUTIONS:
-        return {"usd": None, "approximate": False,
-                "basis": f"no measured charge for resolution {resolution!r} ({', '.join(_GPT_IMAGE_RESOLUTIONS)})"}
-    charges = _GPT_IMAGE_CHARGE[quality]
-    priced_at = resolution if resolution in charges else "4k"
+        return _gpt_image_refused("a per-token price sentence whose rates differ from the measured "
+                                  "GPT Image 2.5 ones")
+    key = (params.get("aspect_ratio", _GPT_IMAGE_DEFAULT_SHAPE),
+           params.get("quality", _GPT_IMAGE_DEFAULT_QUALITY), params.get("resolution"))
     references = params.get("image_urls")
     references = len(references) if isinstance(references, list) else 0
-    prompt = params.get("prompt")
-    prompt_tokens = len(prompt) / 3 if isinstance(prompt, str) else 0  # generous: ~4 characters a token
-    usd = (charges[priced_at] + references * _GPT_IMAGE_PER_REFERENCE
-           + prompt_tokens * _TOKEN_RATES["text input"] / 1_000_000)
-    how = f"quality {quality}" + ("" if "quality" in params else " (the default)")
-    if resolution is None:
-        how += f", {priced_at} (no `resolution` given: the dearest)"
-    elif resolution != priced_at:
-        how += f", {priced_at} (the dearest; {resolution} not measured at this quality)"
-    else:
-        how += f", {priced_at}"
+    readable = all(value is None or isinstance(value, str) for value in key)
+    if not readable or key not in _GPT_IMAGE_CHARGE:
+        return _gpt_image_refused(
+            f"no GPT Image 2.5 charge measured for {_gpt_image_combination(key)}; measured: "
+            + ", ".join(map(_gpt_image_combination, _GPT_IMAGE_CHARGE)))
+    if references and key not in _GPT_IMAGE_PER_REFERENCE:
+        return _gpt_image_refused(
+            f"no GPT Image 2.5 reference-image charge measured for {_gpt_image_combination(key)}; "
+            "measured: " + ", ".join(map(_gpt_image_combination, _GPT_IMAGE_PER_REFERENCE)))
+    usd = _GPT_IMAGE_CHARGE[key] + references * _GPT_IMAGE_PER_REFERENCE.get(key, 0.0)
+    how = _gpt_image_combination(key)
     if references:
         how += f", {references} reference image{'s' if references > 1 else ''}"
     return {"usd": round(usd, 4), "approximate": True,
-            "basis": (f"GPT Image 2.5 charge measured on {_GPT_IMAGE_MEASURED_ON} at {how}, square output, "
-                      "no margin: Higgsfield bills tokens and reports no cost")}
+            "basis": (f"GPT Image 2.5 charge measured on {_GPT_IMAGE_MEASURED_ON} at {how}, "
+                      "no margin: Higgsfield bills tokens and reports no cost per job")}
 
 
 def price_of(estimate: Any, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -187,7 +205,8 @@ def price_of(estimate: Any, params: Dict[str, Any]) -> Dict[str, Any]:
     `usd` is None when no amount can be read; `basis` says why, or how it was
     computed. An amount computed from a per-second sentence is approximate:
     the sentence prices a 16:9 output before any discount. GPT Image 2.5's
-    per-token sentence is priced at its measured charge, also approximate.
+    per-token sentence is priced at its measured charge, also approximate, and
+    a combination not measured is refused (`higgsfield_price_unknown`).
     """
     if not isinstance(estimate, dict):
         return {"usd": None, "approximate": False, "basis": "the estimate answer is not an object"}
