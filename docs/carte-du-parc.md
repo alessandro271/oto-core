@@ -24,7 +24,7 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 | `attio` | Attio | 1.3.0 | clé | non | 47 | 28 | 11 | 8 | oui | 47 | non | 0 |
 | `brevo` | Brevo | 1.0.0 | clé | non | 60 | 36 | 16 | 8 | oui | 60 | non | 0 |
 | `claap` | Claap | 1.0.1 | clé | non | 6 | 5 | 0 | 1 | non | 6 | non | 0 |
-| `crisp` | Crisp | 1.0.0 | clé | non | 20 | 20 | 0 | 0 | oui | 20 | non | 0 |
+| `crisp` | Crisp | 1.1.0 | clé | non | 28 | 20 | 5 | 3 | oui | 28 | non | 0 |
 | `dataforseo` | DataForSEO | 1.0.4 | clé | oui | 62 | 59 | 3 | 0 | oui, avec solde | 50 | non | 0 |
 | `dropcontact` | Dropcontact | 1.0.0 | clé | oui | 3 | 2 | 1 | 0 | oui, avec solde | 1 | non | 0 |
 | `elevenlabs` | ElevenLabs | 1.0.1 | clé | non | 4 | 4 | 0 | 0 | oui | 4 | non | 0 |
@@ -76,7 +76,7 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 | `typeform` | Typeform | 1.2.0 | clé | non | 12 | 6 | 1 | 5 | non | 12 | non | 0 |
 | `wttj_ats` | Welcome to the Jungle ATS | 1.0.0 | clé | non | 10 | 7 | 3 | 0 | non | 0 | non | 0 |
 | `yousign` | Yousign | 1.1.1 | clé | non | 13 | 5 | 7 | 1 | oui | 0 | non | 0 |
-| **total : 61** |  |  |  |  | 1465 | 914 | 340 | 211 |  | 985 |  | 0 |
+| **total : 61** |  |  |  |  | 1473 | 914 | 345 | 214 |  | 993 |  | 0 |
 
 ## Par type
 
@@ -87,4 +87,4 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 | compte de service (assertion signée) | 1 | 6 |
 | clé de l'hôte | 2 | 29 |
 | sans clé | 0 | 0 |
-| clé | 48 | 1353 |
+| clé | 48 | 1361 |
