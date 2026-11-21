@@ -9,14 +9,14 @@ own HTTP client, credential vault and logs, and passes each account's secret at 
 
 ## Install
 
-Pin an exact version:
+The package is not published on npm. Pin the commit of a tag `vX.Y.Z` of the repository:
 
-```bash
-npm i @otomata_tech/connectors@<version>
+```json
+"@otomata_tech/connectors": "github:oto-now/connectors#<commit of vX.Y.Z>&path:/ts"
 ```
 
-The version is the repository's: each tag `vX.Y.Z` publishes this package and the Python library
-([`oto-core`](https://pypi.org/project/oto-core/)) at the same version.
+The version is the repository's: each tag `vX.Y.Z` carries this package and the Python library
+([`oto-core`](https://pypi.org/project/oto-core/), published on PyPI) at the same version.
 
 ## Use
 
