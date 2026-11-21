@@ -153,6 +153,16 @@ function auth(connector: string, declared: Json): Json {
   return out
 }
 
+/** Les champs du credential, `holder` toujours dit (`account` par défaut). */
+function credential(declared: Json[] | undefined): Json[] {
+  return (declared ?? []).map((field: Json) => ({
+    name: field.name,
+    label: field.label,
+    secret: field.secret,
+    holder: field.holder ?? "account",
+  }))
+}
+
 /** La définition d'un connecteur, telle que la fabrique l'exporte sous `connector` dans `ts/src/<nom>.ts`. */
 export function toDefinition(doc: Json): Connector {
   const connector = doc.connector
@@ -168,16 +178,21 @@ export function toDefinition(doc: Json): Connector {
   if ("logo_domain" in connector) out.logoDomain = connector.logo_domain
   if ("base_url" in connector) out.baseUrl = connector.base_url
   if ("base_urls" in connector) out.baseUrls = copy(connector.base_urls)
-  out.auth = auth(name, connector.auth)
-  out.credential = (connector.credential ?? []).map((field: Json) => ({
-    name: field.name,
-    label: field.label,
-    secret: field.secret,
-    holder: field.holder ?? "account",
-  }))
+  if ("accesses" in connector)
+    out.accesses = connector.accesses.map((access: Json) => ({
+      name: access.name,
+      label: access.label,
+      auth: auth(name, access.auth),
+      credential: credential(access.credential),
+      modes: copy(access.modes),
+    }))
+  else {
+    out.auth = auth(name, connector.auth)
+    out.credential = credential(connector.credential)
+  }
   if ("account_identity" in connector) out.accountIdentity = copy(connector.account_identity)
   if ("settings" in connector) out.settings = copy(connector.settings)
-  out.modes = copy(connector.modes)
+  if ("modes" in connector) out.modes = copy(connector.modes)
   out.timeoutMs = (connector.timeout_s ?? DEFAULT_TIMEOUT_S) * 1000
   if ("query_arrays" in connector) out.queryArrays = connector.query_arrays
   if ("headers" in connector) out.headers = copy(connector.headers)

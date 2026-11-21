@@ -11,6 +11,8 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 5. `auth.kind: none` : sans clé ;
 6. sinon (`api_key`, `bearer`, `basic`) : clé.
 
+Un connecteur à plusieurs accès (`accesses`) a le type de chacun, et compte dans « Par type » pour chacun.
+
 « Clé de la plateforme » : `modes` contient `platform`. Fonctions : par `class` (lecture, écriture, sensible). Sonde : `probe`, et son solde `probe.balance`. Avec coût : les fonctions qui portent `cost`. Niveaux d'accès : `auth.access_levels`. Non générées : les fonctions que la fabrique saute, nommées par `python -m fabrique`.
 
 | connecteur | libellé | version | type | clé de la plateforme | fonctions | lecture | écriture | sensible | sonde | avec coût | niveaux d'accès | non générées |
@@ -18,6 +20,7 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 | `affinity` | Affinity | 1.0.0 | clé | non | 33 | 24 | 7 | 2 | non | 0 | non | 0 |
 | `aircall` | Aircall | 1.1.0 | clé | non | 20 | 20 | 0 | 0 | non | 20 | non | 0 |
 | `allo` | Allo | 1.2.0 | clé | non | 95 | 40 | 41 | 14 | oui | 1 | non | 0 |
+| `alma` | Alma | 1.0.0 | clé | non | 3 | 3 | 0 | 0 | oui | 3 | non | 0 |
 | `amplemarket` | Amplemarket | 1.0.0 | clé | non | 48 | 28 | 15 | 5 | oui | 48 | non | 0 |
 | `amplitude` | Amplitude | 1.2.0 | clé | non | 16 | 16 | 0 | 0 | non | 0 | non | 0 |
 | `apollo` | Apollo.io | 1.1.1 | clé | non | 30 | 16 | 10 | 4 | non | 30 | non | 0 |
@@ -35,7 +38,7 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 | `gmail` | Gmail | 1.1.0 | connexion d'une personne (OAuth) | non | 13 | 8 | 2 | 3 | non | 13 | oui | 0 |
 | `google_calendar` | Google Calendar | 1.0.0 | connexion d'une personne (OAuth) | non | 7 | 4 | 0 | 3 | non | 7 | oui | 0 |
 | `google_drive` | Google Drive | 1.0.0 | connexion d'une personne (OAuth) | non | 12 | 5 | 4 | 3 | non | 12 | oui | 0 |
-| `google_search_console` | Google Search Console | 1.1.0 | compte de service (assertion signée) | non | 6 | 5 | 1 | 0 | oui | 6 | oui | 0 |
+| `google_search_console` | Google Search Console | 2.0.0 | compte de service (assertion signée) ou connexion d'une personne (OAuth) | non | 6 | 5 | 1 | 0 | oui | 6 | oui | 0 |
 | `google_sheets` | Google Sheets | 1.0.1 | connexion d'une personne (OAuth) | non | 5 | 2 | 2 | 1 | non | 5 | oui | 0 |
 | `granola` | Granola | 1.0.0 | clé | non | 8 | 5 | 2 | 1 | oui | 8 | non | 0 |
 | `heyreach` | HeyReach | 1.0.1 | clé | non | 32 | 20 | 4 | 8 | oui | 0 | non | 0 |
@@ -76,15 +79,15 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 | `typeform` | Typeform | 1.2.0 | clé | non | 12 | 6 | 1 | 5 | non | 12 | non | 0 |
 | `wttj_ats` | Welcome to the Jungle ATS | 1.0.0 | clé | non | 10 | 7 | 3 | 0 | non | 0 | non | 0 |
 | `yousign` | Yousign | 1.1.1 | clé | non | 13 | 5 | 7 | 1 | oui | 0 | non | 0 |
-| **total : 61** |  |  |  |  | 1485 | 926 | 345 | 214 |  | 1005 |  | 0 |
+| **total : 62** |  |  |  |  | 1488 | 929 | 345 | 214 |  | 1008 |  | 0 |
 
 ## Par type
 
 | type | connecteurs | fonctions |
 | --- | ---: | ---: |
-| connexion d'une personne (OAuth) | 7 | 67 |
+| connexion d'une personne (OAuth) | 8 | 73 |
 | application du client (OAuth entre machines) | 3 | 10 |
 | compte de service (assertion signée) | 1 | 6 |
 | clé de l'hôte | 2 | 29 |
 | sans clé | 0 | 0 |
-| clé | 48 | 1373 |
+| clé | 49 | 1376 |
