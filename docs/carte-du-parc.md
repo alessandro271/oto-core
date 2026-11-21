@@ -20,6 +20,7 @@ Un connecteur à plusieurs accès (`accesses`) a le type de chacun, et compte da
 | `affinity` | Affinity | 1.0.0 | clé | non | 33 | 24 | 7 | 2 | non | 0 | non | 0 |
 | `aircall` | Aircall | 1.1.0 | clé | non | 20 | 20 | 0 | 0 | non | 20 | non | 0 |
 | `allo` | Allo | 1.2.0 | clé | non | 95 | 40 | 41 | 14 | oui | 1 | non | 0 |
+| `alma` | Alma | 1.0.0 | clé | non | 3 | 3 | 0 | 0 | oui | 3 | non | 0 |
 | `amplemarket` | Amplemarket | 1.0.0 | clé | non | 48 | 28 | 15 | 5 | oui | 48 | non | 0 |
 | `amplitude` | Amplitude | 1.2.0 | clé | non | 16 | 16 | 0 | 0 | non | 0 | non | 0 |
 | `apollo` | Apollo.io | 1.1.1 | clé | non | 30 | 16 | 10 | 4 | non | 30 | non | 0 |
@@ -78,7 +79,7 @@ Un connecteur à plusieurs accès (`accesses`) a le type de chacun, et compte da
 | `typeform` | Typeform | 1.2.0 | clé | non | 12 | 6 | 1 | 5 | non | 12 | non | 0 |
 | `wttj_ats` | Welcome to the Jungle ATS | 1.0.0 | clé | non | 10 | 7 | 3 | 0 | non | 0 | non | 0 |
 | `yousign` | Yousign | 1.1.1 | clé | non | 13 | 5 | 7 | 1 | oui | 0 | non | 0 |
-| **total : 61** |  |  |  |  | 1473 | 914 | 345 | 214 |  | 993 |  | 0 |
+| **total : 62** |  |  |  |  | 1476 | 917 | 345 | 214 |  | 996 |  | 0 |
 
 ## Par type
 
@@ -89,4 +90,4 @@ Un connecteur à plusieurs accès (`accesses`) a le type de chacun, et compte da
 | compte de service (assertion signée) | 1 | 6 |
 | clé de l'hôte | 2 | 29 |
 | sans clé | 0 | 0 |
-| clé | 48 | 1361 |
+| clé | 49 | 1364 |
