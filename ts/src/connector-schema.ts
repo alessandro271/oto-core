@@ -67,18 +67,30 @@ export const connectorSchema: JsonSchema = {
       "if": {
         "properties": {
           "connector": {
-            "properties": {
-              "auth": {
+            "anyOf": [
+              {
                 "required": [
-                  "access_levels"
+                  "auth"
+                ],
+                "properties": {
+                  "auth": {
+                    "required": [
+                      "access_levels"
+                    ]
+                  }
+                }
+              },
+              {
+                "required": [
+                  "accesses"
                 ]
               }
-            }
+            ]
           }
         }
       },
       "then": {
-        "$comment": "A connector with access levels: every function declares the scopes it requires.",
+        "$comment": "A connector with access levels (each of its accesses has them): every function declares the scopes it requires.",
         "properties": {
           "functions": {
             "items": {
@@ -456,8 +468,6 @@ export const connectorSchema: JsonSchema = {
         "namespace",
         "version",
         "api_version",
-        "auth",
-        "modes",
         "errors"
       ],
       "properties": {
@@ -515,36 +525,14 @@ export const connectorSchema: JsonSchema = {
           }
         },
         "credential": {
-          "description": "Secret and non-secret fields of the credential supplied by the consumer: an account keeps every one. Required unless auth.kind is none or oauth2_user, which forbid it (the tokens of a consent are not credential fields).",
+          "$ref": "#/$defs/credential"
+        },
+        "accesses": {
+          "description": "The accesses of a connector that opens by several (an organisation's service account, a person's consent), in place of auth, credential and modes: an account opens by one of them, the functions, the address and the error table are shared.",
           "type": "array",
-          "minItems": 1,
+          "minItems": 2,
           "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": [
-              "name",
-              "label",
-              "secret"
-            ],
-            "properties": {
-              "name": {
-                "$ref": "#/$defs/identifier"
-              },
-              "label": {
-                "$ref": "#/$defs/text"
-              },
-              "secret": {
-                "type": "boolean"
-              },
-              "holder": {
-                "description": "Who supplies the field. account: entered with the account. host: supplied by the host application, once for all its organisations; never stored with the account, shown or entered.",
-                "enum": [
-                  "account",
-                  "host"
-                ],
-                "default": "account"
-              }
-            }
+            "$ref": "#/$defs/access"
           }
         },
         "account_identity": {
@@ -571,17 +559,7 @@ export const connectorSchema: JsonSchema = {
           }
         },
         "modes": {
-          "description": "Who may hold an account. Current vocabulary, to be aligned with organisation, team and person.",
-          "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "platform",
-              "byo_user",
-              "byo_org"
-            ]
-          }
+          "$ref": "#/$defs/modes"
         },
         "timeout_s": {
           "description": "Timeout of one call, in seconds.",
@@ -720,32 +698,50 @@ export const connectorSchema: JsonSchema = {
       },
       "allOf": [
         {
-          "if": {
-            "properties": {
-              "auth": {
-                "properties": {
-                  "kind": {
-                    "enum": [
-                      "none",
-                      "oauth2_user"
+          "oneOf": [
+            {
+              "$comment": "A single access: auth, its credential and modes.",
+              "required": [
+                "auth",
+                "modes"
+              ],
+              "not": {
+                "required": [
+                  "accesses"
+                ]
+              },
+              "allOf": [
+                {
+                  "$ref": "#/$defs/credential_of_auth"
+                }
+              ]
+            },
+            {
+              "$comment": "Several accesses: each brings its auth, credential and modes.",
+              "required": [
+                "accesses"
+              ],
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "auth"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "credential"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "modes"
                     ]
                   }
-                }
+                ]
               }
             }
-          },
-          "then": {
-            "not": {
-              "required": [
-                "credential"
-              ]
-            }
-          },
-          "else": {
-            "required": [
-              "credential"
-            ]
-          }
+          ]
         },
         {
           "not": {
@@ -758,6 +754,10 @@ export const connectorSchema: JsonSchema = {
       ],
       "dependentSchemas": {
         "quota": {
+          "$comment": "A platform key: a single access, whose modes contain platform.",
+          "required": [
+            "modes"
+          ],
           "properties": {
             "modes": {
               "contains": {
@@ -767,6 +767,123 @@ export const connectorSchema: JsonSchema = {
           }
         }
       }
+    },
+    "credential": {
+      "description": "Secret and non-secret fields of the credential supplied by the consumer: an account keeps every one. Required unless auth.kind is none or oauth2_user, which forbid it (the tokens of a consent are not credential fields).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "label",
+          "secret"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/$defs/identifier"
+          },
+          "label": {
+            "$ref": "#/$defs/text"
+          },
+          "secret": {
+            "type": "boolean"
+          },
+          "holder": {
+            "description": "Who supplies the field. account: entered with the account. host: supplied by the host application, once for all its organisations; never stored with the account, shown or entered.",
+            "enum": [
+              "account",
+              "host"
+            ],
+            "default": "account"
+          }
+        }
+      }
+    },
+    "credential_of_auth": {
+      "$comment": "credential is required unless auth.kind is none or oauth2_user, which forbid it.",
+      "if": {
+        "properties": {
+          "auth": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "none",
+                  "oauth2_user"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "required": [
+            "credential"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "credential"
+        ]
+      }
+    },
+    "modes": {
+      "description": "Who may hold an account. Current vocabulary, to be aligned with organisation, team and person.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "platform",
+          "byo_user",
+          "byo_org"
+        ]
+      }
+    },
+    "access": {
+      "description": "One access of a connector that opens by several: its name (recorded with each account that opens by it), its label (shown to whoever connects) and its auth, credential and modes, with access levels.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "label",
+        "auth",
+        "modes"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/identifier"
+        },
+        "label": {
+          "$ref": "#/$defs/text"
+        },
+        "auth": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/auth"
+            },
+            {
+              "required": [
+                "access_levels"
+              ]
+            }
+          ]
+        },
+        "credential": {
+          "$ref": "#/$defs/credential"
+        },
+        "modes": {
+          "$ref": "#/$defs/modes"
+        }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/credential_of_auth"
+        }
+      ]
     },
     "auth": {
       "description": "Other keys depend on kind. Values naming a secret refer to connector.credential[].name; a URL template cites connector.settings[].name.",

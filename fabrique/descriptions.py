@@ -153,7 +153,11 @@ pas dire :
    ceux des cas communs (`connectors/_cases/list_body.yaml`), jugés dans cet ordre ;
 24. le préfixe réservé (décidé par le mainteneur le 2026-11-19) : ni le nom ni l'espace d'un connecteur partagé ne
    commencent par `custom_`, le préfixe des définitions Custom API d'une organisation (docs/conception/custom-api.md) :
-   aucune ne rencontre le catalogue. Jugée sur `connectors/<nom>/connector.yaml` seulement (`check`).
+   aucune ne rencontre le catalogue. Jugée sur `connectors/<nom>/connector.yaml` seulement (`check`) ;
+25. les accès (`connector.accesses`, un connecteur qui s'ouvre par plusieurs, voir docs/conception/compte.md,
+   « Plusieurs accès ») : chaque accès a un nom à lui ; les règles 2, 3, 5, 6, 7 et 8, qui lisent `auth`,
+   `credential` ou `modes`, sont jugées pour chaque accès, sur le connecteur tel que cet accès le voit (ses `auth`,
+   `credential` et `modes` à la place de `accesses`) : la sonde et chaque fonction servent à chaque accès.
 
 Les règles 1 à 5, 9 à 11, 15, 18, 20, 22 et 23 vivent dans la lib (`oto/connectors/rules/`), une seule copie, que le profil Custom
 API applique aussi à la définition d'une organisation ; ce module les applique et les réexporte.
@@ -184,6 +188,7 @@ from oto.connectors.rules.checks import (AUTH_REFERENCES, DEFAULT_TIMEOUT_S, SCH
                                          strip_refusal)
 
 from oto.connectors.custom_api.profile import PREFIX as CUSTOM_API_PREFIX
+from oto.connectors.engine.accesses import merged
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 CONNECTORS = REPO / "connectors"
@@ -824,16 +829,31 @@ def check_prefix(connector: dict, where: str) -> None:
                 f"{where}: connector.{key} {connector[key]!r}: the prefix {CUSTOM_API_PREFIX!r} is reserved to the "
                 "Custom API definitions of an organisation"
             )
+def access_views(data: dict, where: str) -> list[tuple[dict, str]]:
+    """Règle 25 : la description telle que la voit chacun de ses accès, avec où le dire ; elle-même pour un connecteur
+    qui ne déclare qu'un accès. Deux accès du même nom sont refusés."""
+    connector = data["connector"]
+    declared = connector.get("accesses")
+    if declared is None:
+        return [(data, where)]
+    names = [access["name"] for access in declared]
+    twice = sorted({name for name in names if names.count(name) > 1})
+    if twice:
+        raise DescriptionError(f"{where}: access name(s) declared twice: {', '.join(twice)}")
+    return [({**data, "connector": merged(connector, access)}, f"{where}: access {access['name']}") for access in declared]
 
 
 def check_rules(data: dict, where: str) -> None:
     """Les règles hors schéma, sur une description déjà validée par le schéma (`check`, et les cas du coût)."""
-    check_auth(data["connector"], where)
-    check_account_identity(data, where)
-    check_settings(data["connector"], where)
+    views = access_views(data, where)
+    for view, at in views:
+        check_auth(view["connector"], at)
+        check_account_identity(view, at)
+        check_settings(view["connector"], at)
     for function in data["functions"]:
         check_arguments(function, where)
-        check_constants(data["connector"], function, where)
+        for view, at in views:
+            check_constants(view["connector"], function, at)
         check_checks(function, where)
         check_act(function, where)
         check_timeout(data["connector"], function, where)
@@ -848,8 +868,9 @@ def check_rules(data: dict, where: str) -> None:
     twice = sorted({n for n in names if names.count(n) > 1})
     if twice:
         raise DescriptionError(f"{where}: function name(s) declared twice: {', '.join(twice)}")
-    check_probe(data, where)
-    check_access_levels(data, where)
+    for view, at in views:
+        check_probe(view, at)
+        check_access_levels(view, at)
     check_signals(data, where)
 
 
