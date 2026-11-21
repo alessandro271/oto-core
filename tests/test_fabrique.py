@@ -237,6 +237,27 @@ def test_basic_without_username_passes_and_is_carried_without_it():
     assert "username" not in source
 
 
+def test_description_and_logo_domain_are_carried_in_camel_case():
+    """`connector.description` et `connector.logo_domain`, facultatifs, passent tels quels : `description`, `logoDomain`."""
+    description = _load(AIRCALL)
+    description["connector"]["description"] = "Calls of a phone system."
+    description["connector"]["logo_domain"] = "aircall.io"
+    source = connector_module(check(description, AIRCALL)).source
+    assert '  description: "Calls of a phone system.",\n  logoDomain: "aircall.io",\n' in source
+
+
+@pytest.mark.parametrize("key, value", [
+    ("description", ""), ("description", "  "), ("description", "x" * 2001),
+    ("logo_domain", "https://aircall.io"), ("logo_domain", "Aircall.io"), ("logo_domain", "aircall"),
+    ("logo_domain", "aircall.io."), ("logo_domain", "aircall.io:443"), ("logo_domain", "aircall.io/x"),
+])
+def test_description_and_logo_domain_are_checked_by_the_schema(key, value):
+    description = _load(AIRCALL)
+    description["connector"][key] = value
+    with pytest.raises(DescriptionError):
+        check(description, AIRCALL)
+
+
 def test_schema_violation_is_refused_before_the_rules():
     description = _load(SELLSY)
     del description["functions"][0]["class"]
@@ -642,7 +663,7 @@ def test_gmail_levels_serve_reads_at_read_and_everything_at_full():
 
 
 def _without_levels(connector: dict) -> bool:
-    """Un seul accès, sans niveaux (un connecteur à plusieurs accès en a dans chacun, règle 24)."""
+    """Un seul accès, sans niveaux (un connecteur à plusieurs accès en a dans chacun, règle 25)."""
     return "accesses" not in connector and "access_levels" not in connector["auth"]
 
 
@@ -752,7 +773,7 @@ def test_search_console_levels_read_by_default_and_add_sitemap_at_full():
 
 
 def test_search_console_opens_by_a_service_account_or_a_google_sign_in():
-    """Règle 24 : deux accès, mêmes fonctions ; la connexion Google d'une personne lit son identité à l'adresse
+    """Règle 25 : deux accès, mêmes fonctions ; la connexion Google d'une personne lit son identité à l'adresse
     OpenID de Google, que chaque niveau demande, et sert les lectures au niveau `read`."""
     description = check(_load(SEARCH_CONSOLE), SEARCH_CONSOLE)
     connector = description.data["connector"]
@@ -793,7 +814,7 @@ def test_search_console_level_rules_refuse(mutate, message):
      "access service_account: auth.kind oauth2_jwt_bearer takes a single credential field"),
 ], ids=["access_twice", "identity_not_served_in_one_access", "rule_2_in_one_access"])
 def test_access_rules_refuse(mutate, message):
-    """Règle 24 : un nom par accès ; les règles qui lisent `auth`, `credential` ou `modes` sont jugées pour chaque accès,
+    """Règle 25 : un nom par accès ; les règles qui lisent `auth`, `credential` ou `modes` sont jugées pour chaque accès,
     et le refus nomme l'accès."""
     description = _load(SEARCH_CONSOLE)
     mutate(description)

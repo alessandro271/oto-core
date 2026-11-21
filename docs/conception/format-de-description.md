@@ -41,6 +41,7 @@ Un connecteur partagé se décrit dans un fichier YAML, `connectors/<nom>/connec
 | [Erreurs et signal de refus](signal-de-refus.md) | `errors`, `refusals`, `marks_account`, `body`. |
 | [Coût et solde](cout-et-solde.md) | `cost`, `probe`, `probe.balance`. |
 | [Travaux longs](travaux-longs.md) | `async` et `background`. |
+| [Custom API](custom-api.md) | Le profil fermé du format pour la définition d'un outil par une organisation, l'import OpenAPI et la reprise d'oto 1. |
 
 ### Le fichier
 
@@ -55,6 +56,8 @@ Un connecteur partagé se décrit dans un fichier YAML, `connectors/<nom>/connec
 |---|---|---|
 | `name` | oui | Identifiant stable (`^[a-z][a-z0-9_]*$`), premier segment des outils. |
 | `label` | oui | Nom affiché. |
+| `description` | non | Ce que l'agent lit de l'outil entier, en anglais : 1 à 2 000 caractères, pas seulement des blancs. |
+| `logo_domain` | non | Domaine de l'outil, d'où un écran tire son logo : en minuscules, deux étiquettes au moins, la dernière en lettres, sans schéma, port, chemin ni point final (`example.com`). |
 | `namespace` | oui | Préfixe des outils exposés, souvent égal à `name`. |
 | `version` | oui | Version du connecteur, semver : elle monte avec tout commit qui change sa description ou son client (« Contrôles », ci-dessous). |
 | `api_version` | oui | Version de l'API tierce, telle que l'éditeur la nomme. |
@@ -146,7 +149,7 @@ L'exposition est une projection, pas une propriété de la fonction. `mode` vaut
 
 ### Contrôles
 
-`tests/test_connector_descriptions.py` vérifie que le schéma est un JSON Schema valide, que chaque description le respecte et porte le nom de son dossier, et que chaque exemple respecte l'entrée de sa fonction. Des variantes invalides du fichier Sellsy doivent être refusées : classe absente, clé inconnue, `call` et `handwritten` ensemble ou aucun des deux, fonction sensible sans `confirm`, entrée non stricte, aucun exemple, exemple hors bornes ou à argument inconnu, `embed` non documenté, `quota` sans `platform`, version hors semver, `exposure.mode` inconnu, schéma de sortie ouvert ou sans propriétés, `rate_limit` incomplet, en-tête constant non textuel, encodage inconnu, contrôle d'un genre inconnu, attente sans chemin, sonde à clé inconnue, `more` vide ; pour le délai d'une fonction, six de plus : nul, négatif, non entier, en texte, `null`, au-delà de 300 s (borne qui vaut aussi pour le connecteur). Les variantes propres à un bloc spécialisé sont dites dans son document. Les règles hors schéma sont vérifiées par la fabrique ([fabrique](fabrique.md)). `jsonschema` est un outil de test, pas une dépendance de la lib.
+`tests/test_connector_descriptions.py` vérifie que le schéma est un JSON Schema valide, que chaque description le respecte et porte le nom de son dossier, et que chaque exemple respecte l'entrée de sa fonction. Des variantes invalides du fichier Sellsy doivent être refusées : classe absente, clé inconnue, `call` et `handwritten` ensemble ou aucun des deux, fonction sensible sans `confirm`, entrée non stricte, aucun exemple, exemple hors bornes ou à argument inconnu, `embed` non documenté, `quota` sans `platform`, version hors semver, `exposure.mode` inconnu, schéma de sortie ouvert ou sans propriétés, `rate_limit` incomplet, en-tête constant non textuel, encodage inconnu, contrôle d'un genre inconnu, attente sans chemin, sonde à clé inconnue, `more` vide ; pour le délai d'une fonction, six de plus : nul, négatif, non entier, en texte, `null`, au-delà de 300 s (borne qui vaut aussi pour le connecteur). Les variantes propres à un bloc spécialisé sont dites dans son document. Les règles hors schéma sont vérifiées par la fabrique ([fabrique](fabrique.md)). `jsonschema` est une dépendance de la lib depuis le profil [Custom API](custom-api.md), qui valide à l'exécution la définition d'une organisation.
 
 Deux gardes de CI :
 
@@ -210,4 +213,6 @@ Deux gardes de CI :
 - 2026-11-06 : `effect` (`send`, `destroy`) sur une fonction sensible, facultatif, sans défaut, pour qu'un hôte distingue un envoi d'une destruction — décidé par Alexis (source : lecteur générique d'oto 1, décision du 05/11).
 - 2026-11-06 : septième mode d'authentification, `oauth2_jwt_bearer`, le compte de service ([compte](compte.md), « Le compte de service ») — décidé par le mainteneur (source : lecture de Search Console par un agent).
 - 2026-11-13 : le compte de service reçoit des niveaux d'accès et un niveau par défaut (`default_level`) ([niveaux d'accès](niveaux-d-acces.md)) — décidé par le mainteneur (source : envoi d'un sitemap à Search Console).
+- 2026-11-19 : la définition Custom API d'une organisation est un fichier du format, restreint par un profil fermé ([Custom API](custom-api.md)) ; `jsonschema` devient une dépendance de la lib — décidé par le mainteneur (source : lot 4 de la bascule des connecteurs d'oto 1 dans la lib).
+- 2026-11-19 : `connector.description` et `connector.logo_domain`, facultatifs, projetés en `description` et `logoDomain`, avec les contrôles qu'oto-core applique à leur déclaration ; les connecteurs existants ne les portent pas encore — décidé par le mainteneur (source : [Custom API](custom-api.md), reprise de la description et du logo d'oto 1).
 - 2026-11-19 : `accesses`, plusieurs accès aux mêmes fonctions, à la place de `auth`, `credential` et `modes` ([compte](compte.md), « Plusieurs accès ») — décidé par le mainteneur (source : oto-now/connectors#244, lot 2).

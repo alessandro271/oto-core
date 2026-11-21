@@ -338,6 +338,9 @@ def connector_module(description: Description, source: str | None = None) -> Mod
         ("version", js(connector["version"])),
         ("apiVersion", js(connector["api_version"])),
     ]
+    for key in ("description", "logo_domain"):
+        if key in connector:
+            entries.append((camel(key), js(connector[key])))
     if "base_url" in connector:
         entries.append(("baseUrl", js(connector["base_url"])))
     if "base_urls" in connector:
@@ -382,6 +385,19 @@ def connector_module(description: Description, source: str | None = None) -> Mod
     footer = f"export const connector = defineConnector({_object(entries, 0)})\n"
     module.source = "\n".join(head) + "\n" + "\n".join(blocks) + ("\n" if blocks else "") + footer
     return module
+
+
+SCHEMA_OUTPUT_NAME = "connector-schema.ts"
+
+
+def schema_source(schema: dict) -> str:
+    """`ts/src/connector-schema.ts` : le schéma du format, que le profil Custom API du paquet (`ts/src/custom-api/`)
+    passe au validateur de l'hôte ; le paquet ne lit aucun fichier hors de `src`."""
+    return (HEADER.format(source="connectors/connector.schema.json") + "\n"
+            + 'import type { JsonSchema } from "./types"\n\n'
+            + "/** Le schéma JSON (2020-12) d'un `connector.yaml`, tel que `connectors/connector.schema.json` le dit. */\n"
+            + "export const connectorSchema: JsonSchema = "
+            + json.dumps(schema, ensure_ascii=False, indent=2) + "\n")
 
 
 def index_source(modules: list[Module]) -> str:

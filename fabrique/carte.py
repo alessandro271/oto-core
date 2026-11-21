@@ -46,7 +46,7 @@ def kind(connector: dict) -> str:
 
 
 def access_connectors(connector: dict) -> list[dict]:
-    """Le bloc `connector` tel que le voit chacun de ses accès (règle 24) ; lui-même quand il n'en déclare qu'un."""
+    """Le bloc `connector` tel que le voit chacun de ses accès (règle 25) ; lui-même quand il n'en déclare qu'un."""
     return [merged(connector, access) for access in connector["accesses"]] if "accesses" in connector else [connector]
 
 
