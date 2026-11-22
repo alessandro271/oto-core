@@ -29,7 +29,7 @@ Un connecteur à plusieurs accès (`accesses`) a le type de chacun, et compte da
 | `claap` | Claap | 1.0.1 | clé | non | 6 | 5 | 0 | 1 | non | 6 | non | 0 |
 | `crisp` | Crisp | 1.1.0 | clé | non | 28 | 20 | 5 | 3 | oui | 28 | non | 0 |
 | `dataforseo` | DataForSEO | 1.0.4 | clé | oui | 62 | 59 | 3 | 0 | oui, avec solde | 50 | non | 0 |
-| `demodesk` | Demodesk | 1.0.0 | clé | non | 9 | 9 | 0 | 0 | oui | 0 | non | 0 |
+| `demodesk` | Demodesk | 1.0.1 | clé | non | 9 | 9 | 0 | 0 | oui | 0 | non | 0 |
 | `dropcontact` | Dropcontact | 1.0.0 | clé | oui | 3 | 2 | 1 | 0 | oui, avec solde | 1 | non | 0 |
 | `elevenlabs` | ElevenLabs | 1.0.1 | clé | non | 4 | 4 | 0 | 0 | oui | 4 | non | 0 |
 | `fillout` | Fillout | 1.0.0 | clé | non | 8 | 4 | 1 | 3 | oui | 8 | non | 0 |

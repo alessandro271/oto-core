@@ -69,7 +69,7 @@ export const listUsers = defineFunction({
     headers: {},
   },
   pagination: { kind: "cursor", requestParam: "cursor", next: "meta.nextCursor", more: "meta.hasNext", maxPages: 10 },
-  output: { items: "data" },
+  output: { items: "data", projection: ["id", "firstName", "lastName", "email", "role"] },
 })
 
 export const listMeetings = defineFunction({
@@ -136,7 +136,7 @@ export const listMeetings = defineFunction({
     headers: {},
   },
   pagination: { kind: "cursor", requestParam: "cursor", next: "meta.nextCursor", more: "meta.hasNext", maxPages: 10 },
-  output: { items: "data" },
+  output: { items: "data", projection: ["demoId", "name", "status", "host", "startDate", "endDate", "access", "recordingTokens"] },
 })
 
 export const listRecordings = defineFunction({
@@ -438,7 +438,7 @@ export const connector = defineConnector({
   name: "demodesk",
   label: "Demodesk",
   namespace: "demodesk",
-  version: "1.0.0",
+  version: "1.0.1",
   apiVersion: "v2",
   baseUrl: "https://demodesk.com/api/v2",
   auth: {"kind": "bearer", "token": "api_key"},

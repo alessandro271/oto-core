@@ -17,6 +17,8 @@
 # - What an agent must not see: `temporaryDirectUrl`, the direct link to a recording's video file, signed with a
 #   temporary access token (it opens the video without a login), is stripped from the recordings list and from a
 #   recording's detail. The HTML copy of a summary (`htmlContent`) is stripped too: it repeats `content`.
+# - What a list returns: list_users and list_meetings keep a short projection of each item (1.0.1: a paginated list
+#   cuts its answer down); list_recordings strips the video link only.
 # - Limits: 120 requests per minute per key, every endpoint counted together (declared); the meetings and recordings
 #   lists also count against 60 per minute per key, a per-route rate the format does not say. Above it, 429 with
 #   Retry-After. Lists page by an opaque cursor (meta.nextCursor while meta.hasNext), 1 to 100 per page, 100 by
@@ -55,7 +57,7 @@ connector:
   name: demodesk
   label: Demodesk
   namespace: demodesk
-  version: 1.0.0
+  version: 1.0.1
   api_version: v2
   base_url: https://demodesk.com/api/v2
   auth: { kind: bearer, token: api_key }
@@ -120,7 +122,8 @@ functions:
       path: /users
       query: { search: search, cursor: cursor, limit: limit }
     pagination: &pages { kind: cursor, request_param: cursor, next: meta.nextCursor, more: meta.hasNext, max_pages: 10 }
-    output: { items: data }
+    # An assistant resolves a teammate from these: locale and timeZone stay out.
+    output: { items: data, projection: [id, firstName, lastName, email, role] }
 
   # --- Meetings -------------------------------------------------------------
 
@@ -169,7 +172,8 @@ functions:
         cursor: cursor
         limit: limit
     pagination: *pages
-    output: { items: data }
+    # The host is already a summary {userId, displayName, email}; the rest of the meeting stays out.
+    output: { items: data, projection: [demoId, name, status, host, startDate, endDate, access, recordingTokens] }
 
   # --- Recordings -----------------------------------------------------------
 
