@@ -6,9 +6,11 @@
 #
 # Read only. urban_start_regulation_ingestion starts a background job that fills
 # FOD's own cache of local-plan regulations and changes nothing elsewhere; it is
-# a read. Seven families,
+# a read. Nine families,
 # prefixed in the function names: company_ (company registers, BODACC, INPI
-# accounts), property_ (address, cadastre, DPE, DVF, building permits), urban_
+# accounts, gender equality index, company agreements), procurement_ (public
+# tender notices and awarded contracts), funding_ (public funding schemes for
+# companies), property_ (address, cadastre, DPE, DVF, building permits), urban_
 # (zoning, written regulation of a local plan, natural and technological risks,
 # classified facilities, public services), law_ (consolidated codes and case
 # law), tax_ (BOFiP tax doctrine: the administration's reading, kept apart from
@@ -44,12 +46,30 @@
 # query PubMed did not process, a CTIS answer out of shape) is a named refusal,
 # not a retryable outage. Offset and page-number paging (PubMed, CTIS,
 # Transparence Santé) is not declared as pagination: the argument says how.
+#
+# On 2026-11-22, the company routes FOD served and this file did not describe
+# were read against the service source at a7cb702 (app/fr.py,
+# app/entreprise_index.py, app/aides.py, app/main.py) and the france-opendata
+# client 0.54.0 for the shape of each answer: BODACC by batch, the gender
+# equality index (Egapro), company agreements (ACCO, and their text read from
+# Légifrance), public tender notices (BOAMP), awarded contracts (DECP) and
+# public funding schemes. Tenders and funding take their own families: they
+# are searched by subject and place, not by company. The two INSEE routes
+# (/api/fr/insee/siret, /api/fr/insee/headquarters) are left out: FOD holds no
+# INSEE key, the caller passes its own in the X-Sirene-Key header, and the
+# format has no per-function credential; company_get covers the head office
+# without a key. Left out of the arguments: chunk_size of the BODACC batch
+# (tuning of the upstream requests), raw of a funding scheme (the raw record,
+# for debugging). Bounds this file adds, the service having none: 1,000 SIRENs
+# per BODACC batch, 100 funding schemes per page, 60,000 characters per slice
+# of an agreement text. The text of an agreement says its next slice
+# (next_offset) but is not declared as pagination: slices are text, not items.
 connector:
   name: fod
   label: France Open Data
   namespace: fod
-  version: 1.7.0
-  api_version: "france-opendata-service 67ed5e3 (routes unversioned)"
+  version: 1.8.0
+  api_version: "france-opendata-service a7cb702 (routes unversioned)"
   base_url: https://data.oto.zone
   auth:
     kind: bearer
@@ -119,7 +139,7 @@ functions:
         employees:
           type: array
           minItems: 1
-          items: { type: string, enum: ["NN", "00", "01", "02", "03", "11", "12", "21", "22", "31", "32", "41", "42", "51", "52", "53"] }
+          items: &tranche_effectif { type: string, enum: ["NN", "00", "01", "02", "03", "11", "12", "21", "22", "31", "32", "41", "42", "51", "52", "53"] }
           description: "INSEE headcount bands of the establishment (00 = none, 01 = 1-2, 02 = 3-5, 03 = 6-9, 11 = 10-19, 12 = 20-49 ... 53 = 10,000 and more; NN = not filled)."
         categorie_entreprise: { type: string, enum: [PME, ETI, GE], description: "INSEE size category." }
         ca_min: { type: integer, minimum: 1, description: "Minimum turnover, in euros." }
@@ -214,7 +234,7 @@ functions:
       required: [siren]
       properties:
         siren: *siren
-        famille:
+        famille: &bodacc_famille
           type: string
           enum: [collective, conciliation, creation, divers, dpc, immatriculation, modification, radiation, retablissement_professionnel, vente]
           description: "Only one family, by its code: collective (insolvency proceedings), dpc (filing of accounts), vente (sale or transfer of a business)... Not the label the output shows."
@@ -278,6 +298,251 @@ functions:
       method: GET
       path: "/api/fr/inpi/{siren}/bilan"
       query: { date_cloture: date_cloture }
+    cost: { per: request }
+
+  - name: company_screen_bodacc_notices
+    class: read
+    description: >-
+      Screen the BODACC legal notices of many French companies at once (up to
+      1,000 SIRENs, grouped into a few upstream requests), newest first.
+      Returns {annonces: [{siren, partie, date_parution, date_jugement,
+      famille, famille_code, type_avis, jugement_famille, jugement_nature,
+      texte, texte_source, tribunal, commercant, bodacc_id}], synthese:
+      {sirens_avec_annonce, sirens_sans_annonce, annonces_total,
+      lignes_total, par_famille, ..., periode}}. One row per notice and per
+      requested SIREN it names (a sale names both parties); partie is that
+      SIREN's role, indeterminee when the notice does not say. The counts are
+      not a verdict: whether a company is in insolvency proceedings is read in
+      texte, SIREN by SIREN. Without famille, every family comes back.
+    input:
+      type: object
+      additionalProperties: false
+      required: [sirens]
+      properties:
+        sirens:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items: { type: string, pattern: "^[0-9]{9}$" }
+          description: "SIRENs, 9 digits each."
+        famille: *bodacc_famille
+        date_from: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", description: "Earliest publication date, inclusive, YYYY-MM-DD (not the judgment date)." }
+        date_to: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", description: "Latest publication date, inclusive, YYYY-MM-DD." }
+    examples:
+      - title: Insolvency proceedings among three suppliers since 2025
+        input: { sirens: ["552032534", "441639465", "855200887"], famille: collective, date_from: "2025-01-01" }
+    call:
+      method: POST
+      path: /api/fr/bodacc/batch
+      body: { sirens: sirens, famille: famille, date_from: date_from, date_to: date_to }
+    timeout_s: 120
+    cost: { per: request }
+
+  - name: company_get_equality_index
+    class: read
+    description: >-
+      Get the gender equality index (Egapro) a French company declared for one
+      year: {annee, entreprise: {siren, raison_sociale, code_naf, effectif:
+      {total, tranche}, ...}, indicateurs, declaration}. entreprise.effectif.total
+      is the exact headcount declared, where the company register only gives a
+      band. Only companies of 50 employees or more must declare: no declaration
+      is not a bad score. When the latest year is unknown, use the latest
+      declaration instead.
+    input:
+      type: object
+      additionalProperties: false
+      required: [siren, year]
+      properties:
+        siren: *siren
+        year: { type: integer, minimum: 2018, description: "Year of the indicators declared." }
+    examples:
+      - title: Danone's 2024 index
+        input: { siren: "552032534", year: 2024 }
+    refusals:
+      - &equality_index_not_found { code: equality_index_not_found, when: "the response is null",
+          message: "No Egapro declaration for this SIREN: the company may have fewer than 50 employees or not have declared." }
+    expect:
+      - { kind: non_empty, refusal: equality_index_not_found, path: entreprise }
+    call:
+      method: GET
+      path: "/api/fr/egapro/{siren}/declaration"
+      query: { year: year }
+    cost: { per: request }
+
+  - name: company_get_latest_equality_index
+    class: read
+    description: >-
+      Get the most recent gender equality index (Egapro) of a French company,
+      looking back up to five years from the current one: same shape as one
+      year's declaration, annee saying which. Use it to qualify a company's
+      exact headcount (entreprise.effectif.total) and to confirm it employs 50
+      people or more.
+    input:
+      type: object
+      additionalProperties: false
+      required: [siren]
+      properties:
+        siren: *siren
+    examples:
+      - title: Latest index of Danone
+        input: { siren: "552032534" }
+    refusals:
+      - *equality_index_not_found
+    expect:
+      - { kind: non_empty, refusal: equality_index_not_found, path: entreprise }
+    call: { method: GET, path: "/api/fr/egapro/{siren}/latest" }
+    cost: { per: request }
+
+  # --- Company agreements (ACCO): who negotiated what, and when ------------
+  - name: company_search_agreements
+    class: read
+    description: >-
+      Search the French company agreements filed since 2017-09-01 (ACCO,
+      metadata only), by cumulative filters. Returns {results: [{id, nature,
+      numero, siret, raison_sociale, code_idcc, date_texte, date_depot,
+      conforme_version_integrale, theme_codes, themes_libelle,
+      syndicats_libelle, titre, permalien, ...}], total_count,
+      effectifs_filter}. Theme codes prove presence, never absence: the
+      indexing is declarative and misses clauses (a health clause often sits
+      in an agreement coded otherwise), so confirm by reading the text. To
+      check one company, search by siren without themes: an agreement is
+      filed under the establishment that deposits it. When
+      effectifs_filter.truncated is true, the answer is not exhaustive: raise
+      scan_cap.
+    input:
+      type: object
+      additionalProperties: false
+      properties:
+        query: { type: string, minLength: 1, maxLength: 200, description: "Text in the agreement title only, not in its body." }
+        themes:
+          type: array
+          minItems: 1
+          items: { type: string, pattern: "^[0-9]{3}$" }
+          description: "Theme codes, any of them: 111 = health cover, 112 = provident scheme, 113 = supplementary pension. The full list comes with its own function."
+        nature: { type: string, minLength: 1, maxLength: 40, description: "Kind of act, as filed: ACCORD (initial agreement), AVENANT (amendment, a renegotiation)..." }
+        siren: *siren
+        siret: &siret { type: string, pattern: "^[0-9]{14}$", description: "SIRET, 14 digits without spaces." }
+        idcc: { type: string, pattern: "^[0-9]{1,4}$", description: "Collective agreement code of the branch, with or without leading zeros." }
+        departement: { type: string, pattern: "^[0-9]{2,5}$", description: "Start of the postal code of the filing establishment: 33, or a full postal code." }
+        date_from: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", description: "Earliest signature date, YYYY-MM-DD." }
+        date_to: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", description: "Latest signature date, YYYY-MM-DD." }
+        latest_per_siret: { type: boolean, default: false, description: "Keep only the latest act of each establishment, before the dates filter: with date_to, finds establishments whose last act is old." }
+        sort_by: { type: string, enum: [date, date_depot, date_diffusion, date_maj], default: date, description: "date = signature date." }
+        sort_dir: { type: string, enum: [asc, desc], default: desc }
+        tranche_effectifs:
+          type: array
+          minItems: 1
+          items: *tranche_effectif
+          description: "INSEE headcount bands of the company's head office (11 = 10-19, 12 = 20-49, 21 = 50-99...), read from the company register: agreements carry no size."
+        exclude_categories:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [PME, ETI, GE] }
+          description: "Drop companies of these INSEE categories, computed over the whole group: [GE] drops subsidiaries of large groups, even small ones. Companies without a category are kept."
+        categories_entreprise:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [PME, ETI, GE] }
+          description: "Keep only these INSEE categories; companies without a category are dropped (about 4%): to target independent SMEs, prefer exclude_categories [GE]."
+        scan_cap: { type: integer, minimum: 1, maximum: 25000, default: 5000, description: "Agreements examined by the size and category filters before paging." }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        offset: { type: integer, minimum: 0, default: 0, description: "Results skipped: page n is offset (n-1) x limit; total_count gives the volume." }
+    examples:
+      - title: Recent health or provident amendments of independent companies
+        input: { themes: ["111", "112"], nature: AVENANT, exclude_categories: [GE], limit: 20 }
+      - title: Every agreement of one company, newest first
+        input: { siren: "552032534" }
+    refusals:
+      - { code: category_filter_unavailable, when: 501,
+          message: "The category filter is not available on this FOD instance: search without categories_entreprise and exclude_categories." }
+    call:
+      method: POST
+      path: /api/fr/accords/search
+      body: { query: query, themes: themes, nature: nature, siren: siren, siret: siret, idcc: idcc,
+              departement: departement, date_from: date_from, date_to: date_to,
+              latest_per_siret: latest_per_siret, sort_by: sort_by, sort_dir: sort_dir,
+              tranche_effectifs: tranche_effectifs, exclude_categories: exclude_categories,
+              categories_entreprise: categories_entreprise, scan_cap: scan_cap,
+              limit: limit, offset: offset }
+    output: { projection: [results, total_count, effectifs_filter] }
+    cost: { per: request }
+
+  - name: company_get_agreement
+    class: read
+    description: >-
+      Get the metadata of one French company agreement by its DILA id
+      (ACCOTEXT...) or its filing number (T...): who signed it (siret,
+      raison_sociale, syndicats_libelle), when (date_texte, date_effet,
+      date_fin), its branch, themes and title, and permalien. The body is not
+      here: it is read with the agreement text, by the DILA id.
+    input:
+      type: object
+      additionalProperties: false
+      required: [id_or_numero]
+      properties:
+        id_or_numero: { type: string, pattern: "^(ACCOTEXT[0-9]{12}|T[0-9A-Z]{5,20})$", description: "DILA id (ACCOTEXT followed by 12 digits) or filing number (T followed by digits)." }
+    examples:
+      - title: One agreement by its DILA id
+        input: { id_or_numero: ACCOTEXT000049966020 }
+      - title: The same agreement by its filing number
+        input: { id_or_numero: T09224066869 }
+    refusals:
+      - { code: agreement_not_found, when: "the response is null", message: "No company agreement with this id or filing number." }
+    expect:
+      - { kind: non_empty, refusal: agreement_not_found, path: id }
+    call: { method: GET, path: "/api/fr/accords/{id_or_numero}" }
+    cost: { per: request }
+
+  - name: company_list_agreement_themes
+    class: read
+    description: >-
+      List the theme codes of company agreements with their label and how many
+      agreements carry each: [{code, libelle, count}]. Read it before filtering
+      agreements by theme: the codes cannot be guessed. A count says how often
+      the code was applied, not how many agreements cover the topic.
+    input:
+      type: object
+      additionalProperties: false
+      properties: {}
+    examples:
+      - title: Theme codes
+        input: {}
+    call: { method: GET, path: /api/fr/accords/themes }
+    cost: { per: request }
+
+  - name: company_get_agreement_text
+    class: read
+    description: >-
+      Get the full text of a French company agreement, read from Légifrance on
+      demand, with its metadata: {id, titre, nature, siret, raison_sociale,
+      date_texte, date_effet, syndicats, texte, texte_chars, offset, tronque,
+      next_offset, permalien}. texte may be empty when no full version was
+      published. A long text comes in slices: when tronque is true, call again
+      with offset set to next_offset (health, provident and final provisions
+      often sit at the end).
+    input:
+      type: object
+      additionalProperties: false
+      required: [acco_id]
+      properties:
+        acco_id: { type: string, pattern: "^ACCOTEXT[0-9]{12}$", description: "DILA id of the agreement (ACCOTEXT followed by 12 digits), not its filing number." }
+        offset: { type: integer, minimum: 0, default: 0, description: "Position in the text where the slice starts: next_offset of the previous slice." }
+        max_chars: { type: integer, minimum: 1, maximum: 60000, default: 30000, description: "Characters in the slice." }
+    examples:
+      - title: Text of an agreement
+        input: { acco_id: ACCOTEXT000049966020 }
+      - title: The rest of a long agreement
+        input: { acco_id: ACCOTEXT000049966020, offset: 30000 }
+    refusals:
+      - { code: agreement_text_not_found, when: "the response carries error not_found",
+          message: "Légifrance has no agreement with this DILA id." }
+    expect:
+      - { kind: non_empty, refusal: agreement_text_not_found, path: permalien }
+    call:
+      method: GET
+      path: "/api/accords/text/{acco_id}"
+      query: { offset: offset, max_chars: max_chars }
+    timeout_s: 90
     cost: { per: request }
 
   # --- Property: address, parcel, energy, sales, permits --------------------
@@ -1554,4 +1819,168 @@ functions:
       query: { entreprise: entreprise, siren: siren, beneficiaire: beneficiaire, rpps: rpps,
                ville: ville, departement: departement, types: types, date_min: date_min,
                date_max: date_max, limit: limit, offset: offset }
+    cost: { per: request }
+
+  # --- Public procurement: tender notices (BOAMP), awarded contracts (DECP) --
+  - name: procurement_search_notices
+    class: read
+    description: >-
+      Search French public tender notices (BOAMP, index kept by FOD and
+      refreshed daily), newest first: {results: [{idweb, objet, organisme,
+      date_publication, date_limite_reponse, dep_publication, nature_marche,
+      type_procedure, type_avis_famille, statut, descripteurs, synthese,
+      url}], total_count}. A notice says a need and a deadline, not who wins:
+      the outcome is in the awarded contracts. Without any filter, the latest
+      notices of all France come back.
+    input:
+      type: object
+      additionalProperties: false
+      properties:
+        query: { type: string, minLength: 1, maxLength: 200, description: "Text in the subject of the notice." }
+        descripteur: { type: string, minLength: 1, maxLength: 200, description: "Text in the BOAMP descriptors: nettoyage, travaux de couverture..." }
+        departement: *departement
+        date_from: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", description: "Earliest publication date, YYYY-MM-DD." }
+        date_to: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", description: "Latest publication date, YYYY-MM-DD." }
+        type_marche: { type: string, enum: [TRAVAUX, FOURNITURES, SERVICES], description: "Works, supplies or services." }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        offset: { type: integer, minimum: 0, default: 0, description: "Notices skipped: page n is offset (n-1) x limit; total_count gives the volume." }
+    examples:
+      - title: Cleaning services tenders in Gironde
+        input: { query: nettoyage, departement: "33", type_marche: SERVICES, limit: 20 }
+      - title: Works notices published since November
+        input: { type_marche: TRAVAUX, date_from: "2026-11-01" }
+    call:
+      method: POST
+      path: /api/fr/tenders/search
+      body: { query: query, descripteur: descripteur, departement: departement, date_from: date_from,
+              date_to: date_to, type_marche: type_marche, limit: limit, offset: offset }
+    output: { projection: [results, total_count] }
+    cost: { per: request }
+
+  - name: procurement_get_notice
+    class: read
+    description: >-
+      Get one French public tender notice (BOAMP) by its id: buyer
+      (organisme), subject, publication date, response deadline
+      (date_limite_reponse), procedure, descriptors, summary (synthese) and
+      the address of the full notice (url).
+    input:
+      type: object
+      additionalProperties: false
+      required: [idweb]
+      properties:
+        idweb: { type: string, pattern: "^[0-9]{2}-[0-9]{1,7}$", description: "BOAMP notice id: two-digit year, dash, number (26-113208)." }
+    examples:
+      - title: One cleaning tender
+        input: { idweb: "26-113208" }
+    refusals:
+      - { code: notice_not_found, when: "the response is null", message: "No BOAMP notice with this id in FOD's index." }
+    expect:
+      - { kind: non_empty, refusal: notice_not_found, path: idweb }
+    call: { method: GET, path: "/api/fr/tenders/{idweb}" }
+    cost: { per: request }
+
+  - name: procurement_search_awarded_contracts
+    class: read
+    description: >-
+      Search French public contracts awarded (DECP, essential data of public
+      procurement), latest notification first: {total, rendus, tronque,
+      signaux: [{ref_key, arrete, objet, nature, procedure, code_cpv,
+      date_notification, duree_mois, montant, acheteur: {siret, nom},
+      lieu_execution: {code, type_code, nom}, titulaires: [{rang,
+      identifiant, type_identifiant, denomination}]}]}. Says who won, for how
+      much and for how long: the real competition of a territory. Since 2024
+      the source publishes no name (buyer, place, winners), and before 2024
+      never the main winner's: a null name is the source's shape, resolve it
+      by SIRET. At least one of mot_cle, titulaire_siret, acheteur_siret,
+      lieu. tronque true: more contracts match than were returned.
+    input:
+      type: object
+      additionalProperties: false
+      anyOf:
+        - { required: [mot_cle] }
+        - { required: [titulaire_siret] }
+        - { required: [acheteur_siret] }
+        - { required: [lieu] }
+      properties:
+        mot_cle: { type: string, minLength: 1, maxLength: 200, description: "Text in the subject of the contract." }
+        titulaire_siret: { type: string, pattern: "^[0-9]{14}$", description: "Every contract won by this establishment, alone or in a consortium." }
+        acheteur_siret: { type: string, pattern: "^[0-9]{14}$", description: "Every contract passed by this buyer." }
+        lieu: { type: string, pattern: "^[0-9AB]{2,5}$", description: "Start of the place-of-performance code: a department (59) or a postal code; the kind of code varies per contract." }
+        depuis: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", description: "Earliest notification date, YYYY-MM-DD." }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    examples:
+      - title: Photovoltaic contracts awarded in the Nord since 2025
+        input: { mot_cle: photovoltaïque, lieu: "59", depuis: "2025-01-01" }
+      - title: Contracts won by one establishment
+        input: { titulaire_siret: "55203253400703", limit: 20 }
+    call:
+      method: GET
+      path: /api/fr/tenders/awarded
+      query: { mot_cle: mot_cle, titulaire_siret: titulaire_siret, acheteur_siret: acheteur_siret,
+               lieu: lieu, depuis: depuis, limit: limit }
+    cost: { per: request }
+
+  # --- Public funding for companies (aides-entreprises.fr) ------------------
+  - name: funding_search_schemes
+    class: read
+    description: >-
+      Shortlist French public funding schemes for a company or a project
+      (grants, loans, guarantees, calls for projects; State reference base of
+      about 2,400 active schemes, refreshed daily): {funnel, count, items:
+      [{id, nom, objet, montant, natures, financeurs, niveau, date_fin,
+      effectif_codes, source_url}]}. The filter is deterministic (place, by
+      the hierarchy commune, department, region, France, EU; headcount;
+      nature; deadline; words) and funnel counts what each step kept. Sector
+      relevance cannot come from the base, whose tagging covers almost every
+      sector: rank the shortlist by reading it, then get each kept scheme by
+      its id and quote it, never from memory. The first call after a restart
+      of the service is slow.
+    input:
+      type: object
+      additionalProperties: false
+      properties:
+        insee: { type: string, pattern: "^([0-9]{2}|2A|2B)[0-9]{3}$", description: "INSEE code of the commune (preferred over the postal code)." }
+        code_postal: { type: string, pattern: "^[0-9]{5}$", description: "Postal code, when the INSEE code is unknown." }
+        effectif: { type: integer, minimum: 0, description: "Number of employees; schemes without a headcount condition stay." }
+        nature: { type: string, minLength: 1, maxLength: 60, description: "Part of the kind of aid, in French: subvention, prêt, garantie, avance, exonération, prestation." }
+        echeance_avant: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", description: "Only schemes closing before this date, YYYY-MM-DD (calls for projects; permanent schemes drop out)." }
+        q: { type: string, minLength: 3, maxLength: 200, description: "Words that must all appear in the name, purpose, conditions or beneficiaries: a coarse filter, not a ranking." }
+        limit: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        offset: { type: integer, minimum: 0, default: 0, description: "Schemes skipped: page n is offset (n-1) x limit; count gives the volume." }
+    examples:
+      - title: Grants for a 12-employee company in Toulouse
+        input: { insee: "31555", effectif: 12, nature: subvention }
+      - title: Calls for projects closing before March in Bordeaux
+        input: { insee: "33063", echeance_avant: "2027-03-01", limit: 20 }
+    call:
+      method: POST
+      path: /api/fr/aides/search
+      body: { insee: insee, code_postal: code_postal, effectif: effectif, nature: nature,
+              echeance_avant: echeance_avant, q: q, limit: limit, offset: offset }
+    output: { projection: [funnel, count, items] }
+    cost: { per: request }
+
+  - name: funding_get_scheme
+    class: read
+    description: >-
+      Get the full record of one French public funding scheme by its id: name,
+      purpose, amount, conditions and beneficiaries (aid_nom, aid_objet,
+      aid_montant, aid_conditions, aid_benef, decoded text), date_fin, niveau,
+      natures, funders, territories, contacts, official sources and forms.
+      The source of truth to quote a scheme kept from a search.
+    input:
+      type: object
+      additionalProperties: false
+      required: [id_aid]
+      properties:
+        id_aid: { type: string, pattern: "^[0-9]{1,10}$", description: "Scheme id, the id of a search result." }
+    examples:
+      - title: One scheme
+        input: { id_aid: "4316" }
+    refusals:
+      - { code: scheme_not_found, when: "the response is null", message: "No active funding scheme with this id: expired schemes leave the base." }
+    expect:
+      - { kind: non_empty, refusal: scheme_not_found, path: id_aid }
+    call: { method: GET, path: "/api/fr/aides/{id_aid}" }
     cost: { per: request }
