@@ -19,7 +19,8 @@
 import { internalHost } from "./address"
 import { standardErrors } from "./errors"
 import { SERVER_VARIABLES } from "./openapi-connector"
-import { OpenAPIRefused, Skip, parse, parts, walk, type Parts } from "./openapi"
+import { identifier } from "./naming"
+import { OpenAPIRefused, Skip, parameters, parse, parts, walk, type Parts } from "./openapi"
 import { RefRefused } from "./openapi-refs"
 import { EXAMPLE_INVALID as FORMAT_EXAMPLE_INVALID, RULE_BROKEN as FORMAT_RULE_BROKEN, SCHEMA_INVALID as FORMAT_SCHEMA_INVALID } from "./problems"
 import { problem, unique, type Problem } from "./problems"
@@ -223,10 +224,24 @@ function examplesOf(operation: Json, args: { [api: string]: string }, at: string
   }))
 }
 
-function confirmOf(operation: Json, found: Parts, cls: unknown, at: string, problems: HostProblem[]): void {
+/** Les noms, autres que le paramètre de query réservé lui-même, qui porteraient `confirm` : tout argument (chemin, query,
+ * en-tête, corps) ou cookie dont le nom, normalisé comme celui d'un argument, vaut `confirm` (`Confirm`, `CONFIRM`…). */
+function impostors(document: Json, item: Json, operation: Json, found: Parts): string[] {
+  const names = [
+    ...Object.keys(found.arguments),
+    ...parameters(document, item, operation)
+      .filter((parameter) => parameter.in === "cookie")
+      .map((parameter) => parameter.name),
+  ]
+  return names.filter((name) => identifier(String(name), "arg") === CONFIRM)
+}
+
+function confirmOf(document: Json, item: Json, operation: Json, found: Parts, cls: unknown, at: string, problems: HostProblem[]): void {
   const parameter = found.leftOut[CONFIRM]
-  if (CONFIRM in found.arguments)
-    problems.push(problem(CONFIRM_RESERVED, at, "confirm is reserved to the protocol of the two steps: a query parameter only"))
+  for (const name of impostors(document, item, operation, found))
+    problems.push(
+      problem(CONFIRM_RESERVED, at, `${repr(name)} would carry confirm, which is reserved to the protocol of the two steps: the query parameter confirm only`),
+    )
   if (cls !== "sensitive") {
     if (parameter !== undefined) problems.push(problem(CONFIRM_RESERVED, `${at}.parameters`, "confirm is the parameter of a sensitive function only"))
     return
@@ -274,7 +289,7 @@ function operationOf(document: Json, path: string, method: string, item: Json, o
     return { at, name, namespace: null, problems }
   }
   const cls = operation["x-oto-class"]
-  confirmOf(operation, found, cls, at, problems)
+  confirmOf(document, item, operation, found, cls, at, problems)
   if (found.body !== null && found.body.additionalProperties !== false)
     problems.push(problem(INPUT_NOT_CLOSED, `${at}.requestBody`, "the JSON body is closed: additionalProperties: false"))
   const examples = examplesOf(operation, found.arguments, at, problems)

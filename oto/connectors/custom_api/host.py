@@ -29,7 +29,8 @@ from urllib.parse import urlsplit
 
 from . import problems as p
 from .errors import standard_errors
-from .openapi import OpenAPIRefused, _Skip, parse, parts, walk
+from .naming import identifier
+from .openapi import OpenAPIRefused, _parameters, _Skip, parse, parts, walk
 from .openapi_refs import RefRefused
 from .openapi_connector import SERVER_VARIABLES
 from .problems import Problem
@@ -258,11 +259,22 @@ def _examples(operation: dict, arguments: dict, at: str, problems: list[Problem]
     ]
 
 
-def _confirm(operation: dict, found, cls: Any, at: str, problems: list[Problem]) -> None:
+def _impostors(document: dict, item: dict, operation: dict, found) -> list[str]:
+    """The names, other than the reserved query parameter itself, that would carry `confirm`: any argument (path,
+    query, header, body) or cookie whose name, normalised as an argument's, is `confirm` (`Confirm`, `CONFIRM`…)."""
+    names = list(found.arguments) + [
+        parameter["name"] for parameter in _parameters(document, item, operation) if parameter.get("in") == "cookie"
+    ]
+    return [name for name in names if identifier(str(name), "arg") == CONFIRM]
+
+
+def _confirm(document: dict, item: dict, operation: dict, found, cls: Any, at: str, problems: list[Problem]) -> None:
     parameter = found.left_out.get(CONFIRM)
-    if CONFIRM in found.arguments:
-        problems.append(Problem(CONFIRM_RESERVED, at, "confirm is reserved to the protocol of the two steps: a query "
-                                "parameter only"))
+    problems += [
+        Problem(CONFIRM_RESERVED, at, f"{name!r} would carry confirm, which is reserved to the protocol of the two "
+                "steps: the query parameter confirm only")
+        for name in _impostors(document, item, operation, found)
+    ]
     if cls != "sensitive":
         if parameter is not None:
             problems.append(Problem(CONFIRM_RESERVED, f"{at}.parameters", "confirm is the parameter of a sensitive "
@@ -304,7 +316,7 @@ def _operation(document: dict, path: str, method: str, item: dict, operation: di
         problems.append(Problem(refused.code, at, refused.reason))
         return {"at": at, "name": name, "namespace": None, "problems": problems}
     cls = operation.get("x-oto-class")
-    _confirm(operation, found, cls, at, problems)
+    _confirm(document, item, operation, found, cls, at, problems)
     if found.body is not None and found.body.get("additionalProperties") is not False:
         problems.append(Problem(INPUT_NOT_CLOSED, f"{at}.requestBody", "the JSON body is closed: "
                                 "additionalProperties: false"))

@@ -80,7 +80,7 @@ export function parse(document: unknown, yaml?: (text: string) => unknown): Json
 }
 
 /** Les paramètres d'une opération, ceux de son chemin compris, ceux de l'opération l'emportant à même place et nom. */
-function parameters(document: Json, item: Json, operation: Json): Json[] {
+export function parameters(document: Json, item: Json, operation: Json): Json[] {
   const found = new Map<string, Json>()
   for (const node of [...(item.parameters || []), ...(operation.parameters || [])]) {
     const [parameter] = resolve(document, node)

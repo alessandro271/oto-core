@@ -370,6 +370,30 @@ refused:
       - { path: "paths./projects/{projectId}.patch.requestBody.content.application/json.schema.properties.confirm", value: { type: boolean } }
     problems: [[host_confirm_reserved, "paths./projects/{projectId}.patch"]]
 
+  - name: confirm_in_capitals_in_the_query
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects/{projectId}.patch.parameters", value: [{ name: Confirm, in: query, schema: { type: boolean } }] }
+    problems: [[host_confirm_reserved, "paths./projects/{projectId}.patch"]]
+
+  - name: confirm_in_a_header
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects/{projectId}.patch.parameters", value: [{ name: confirm, in: header, schema: { type: boolean } }] }
+    problems: [[host_confirm_reserved, "paths./projects/{projectId}.patch"]]
+
+  - name: confirm_in_a_cookie
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects/{projectId}.patch.parameters", value: [{ name: CONFIRM, in: cookie, schema: { type: boolean } }] }
+    problems: [[host_confirm_reserved, "paths./projects/{projectId}.patch"]]
+
+  - name: confirm_beside_the_reserved_one
+    base: projects_and_shares
+    changes:
+      - { path: "paths./shares.post.requestBody.content.application/json.schema.properties.Confirm", value: { type: boolean } }
+    problems: [[host_confirm_reserved, "paths./shares.post"]]
+
   - name: confirm_not_a_boolean
     base: projects_and_shares
     changes:
