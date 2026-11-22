@@ -1,6 +1,7 @@
 """Le paquet Custom API (`oto.connectors.custom_api`) hors des cas communs : bornes, adresses, noms, une définition
 reprise d'oto 1 exécutée par le moteur, la lecture d'un document OpenAPI par son adresse, le rapport à blanc et la garde
-du préfixe réservé dans la fabrique.
+du préfixe réservé dans la fabrique ; la règle 26 de la fabrique, qui refuse à un connecteur partagé les formes du profil
+hôte.
 
 Toutes les données sont fictives : outils inventés, domaines réservés aux tests.
 """
@@ -206,3 +207,27 @@ def test_no_shared_connector_bears_the_reserved_prefix(tmp_path):
     path = tmp_path / "custom_serper" / "connector.yaml"
     with pytest.raises(DescriptionError, match="reserved"):
         check(data, path)
+
+
+def _serper() -> dict:
+    return yaml.safe_load((CONNECTORS / "serper" / "connector.yaml").read_text(encoding="utf-8"))
+
+
+def test_no_shared_connector_takes_the_token_of_the_host():
+    """Règle 26 : `host_delegated` n'appartient qu'au profil hôte."""
+    data = _serper()
+    data["connector"]["auth"] = {"kind": "host_delegated", "issuer": "https://auth.example.test",
+                                 "resource": "https://api.example.test"}
+    data["connector"].pop("credential", None)
+    with pytest.raises(DescriptionError, match="host_delegated belongs"):
+        check(data, CONNECTORS / "serper" / "connector.yaml")
+
+
+def test_no_shared_connector_is_confirmed_by_the_host():
+    """Règle 26 : `confirm.by: host` n'appartient qu'au profil hôte."""
+    data = _serper()
+    function = data["functions"][0]
+    function.update({"class": "sensitive", "confirm": {"by": "host"}})
+    function.pop("act", None)
+    with pytest.raises(DescriptionError, match="confirm.by host belongs"):
+        check(data, CONNECTORS / "serper" / "connector.yaml")

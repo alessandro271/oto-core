@@ -769,7 +769,7 @@ export const connectorSchema: JsonSchema = {
       }
     },
     "credential": {
-      "description": "Secret and non-secret fields of the credential supplied by the consumer: an account keeps every one. Required unless auth.kind is none or oauth2_user, which forbid it (the tokens of a consent are not credential fields).",
+      "description": "Secret and non-secret fields of the credential supplied by the consumer: an account keeps every one. Required unless auth.kind is none, oauth2_user or host_delegated, which forbid it (the tokens of a consent or of the host are not credential fields).",
       "type": "array",
       "minItems": 1,
       "items": {
@@ -802,7 +802,7 @@ export const connectorSchema: JsonSchema = {
       }
     },
     "credential_of_auth": {
-      "$comment": "credential is required unless auth.kind is none or oauth2_user, which forbid it.",
+      "$comment": "credential is required unless auth.kind is none, oauth2_user or host_delegated, which forbid it.",
       "if": {
         "properties": {
           "auth": {
@@ -810,7 +810,8 @@ export const connectorSchema: JsonSchema = {
               "kind": {
                 "enum": [
                   "none",
-                  "oauth2_user"
+                  "oauth2_user",
+                  "host_delegated"
                 ]
               }
             }
@@ -900,6 +901,7 @@ export const connectorSchema: JsonSchema = {
             "oauth2_client_credentials",
             "oauth2_user",
             "oauth2_jwt_bearer",
+            "host_delegated",
             "none"
           ]
         }
@@ -1346,6 +1348,30 @@ export const connectorSchema: JsonSchema = {
               "access_levels"
             ]
           },
+          "additionalProperties": false
+        },
+        {
+          "description": "The token comes from the host that runs the function, never from an account: for each call, the host obtains from issuer a token of the person whose audience is resource, the API described, and sends it as a bearer token. Two ways, and no silent fallback between them: a token exchange (RFC 8693) of the token the host received, for its first-party clients; the person's consent (authorization code and refresh token, kept by the host), for the third-party ones. The endpoints are those the issuer publishes; the host's own client is the host's, never in this file. A host profile definition only (rule 26).",
+          "properties": {
+            "kind": {
+              "const": "host_delegated"
+            },
+            "issuer": {
+              "description": "The issuer that delivers the token, exactly as its tokens name it (iss): a fixed https address, its final slash kept when it has one.",
+              "type": "string",
+              "pattern": "^https://[^\\s{}?#]+$"
+            },
+            "resource": {
+              "description": "The resource indicator of the API at the issuer (RFC 8707), the audience of the token: an absolute URI.",
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9+.-]*:[^\\s]+$"
+            }
+          },
+          "required": [
+            "kind",
+            "issuer",
+            "resource"
+          ],
           "additionalProperties": false
         },
         {
@@ -2048,17 +2074,34 @@ export const connectorSchema: JsonSchema = {
           ]
         },
         "confirm": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "summary"
-          ],
-          "properties": {
-            "summary": {
-              "description": "Template shown before execution, with {param} placeholders.",
-              "$ref": "#/$defs/text"
+          "description": "The confirmation of a sensitive function: a summary template the host fills, or by: host, the API's own two steps (host profile only, rule 26): called without the reserved query parameter confirm, the API answers 202 { status: needs_confirmation, summary } and does nothing; called with confirm=true, it runs.",
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "summary"
+              ],
+              "properties": {
+                "summary": {
+                  "description": "Template shown before execution, with {param} placeholders.",
+                  "$ref": "#/$defs/text"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "by"
+              ],
+              "properties": {
+                "by": {
+                  "const": "host"
+                }
+              }
             }
-          }
+          ]
         },
         "handwritten": {
           "$ref": "#/$defs/handwritten"

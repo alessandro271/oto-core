@@ -2,7 +2,8 @@
 definition, where the admin reads and changes it (docs/conception/signal-de-refus.md for the semantics).
 
 A 401 marks the account (`credential_rejected`) when the account has a credential to refuse: the host shows it red
-until its next success. Without authentication (`none`), nothing marks.
+until its next success. Without authentication (`none`), nothing marks; nor under the token of the host
+(`host_delegated`), which has no account: the person connects again.
 """
 
 from __future__ import annotations
@@ -21,6 +22,11 @@ def standard_errors(label: str, auth_kind: str) -> list[dict]:
             code="authorization_expired",
             marks_account="credential_rejected",
             message=f"{label} no longer accepts this authorization: the person must connect again.",
+        )
+    elif auth_kind == "host_delegated":
+        unauthorized.update(
+            code="authorization_expired",
+            message=f"{label} no longer accepts this person's authorization: they must connect again.",
         )
     elif auth_kind != "none":
         unauthorized["marks_account"] = "credential_rejected"

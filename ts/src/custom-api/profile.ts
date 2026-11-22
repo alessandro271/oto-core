@@ -78,7 +78,7 @@ const FUNCTION_KEYS = [
 export const AUTH_KINDS = ["none", "api_key", "bearer", "basic", "oauth2_client_credentials", "oauth2_user"]
 const AUTH_REFUSED = ["token_urls", "access_levels", "scope_implies", "default_level", "from_token"]
 const MODES = ["byo_user", "byo_org"]
-const FORBIDDEN_HEADERS = ["authorization", "cookie", "set-cookie", "host", "proxy-authorization", "x-api-key", "api-key"]
+export const FORBIDDEN_HEADERS = ["authorization", "cookie", "set-cookie", "host", "proxy-authorization", "x-api-key", "api-key"]
 const CODED_RULES: readonly string[] = [...BODY_REFUSALS, ...NESTED_BODY_REFUSALS, ...LIST_BODY_REFUSALS]
 const WHERE = "definition"
 const FOREIGN = "it touches the resources of the host or goes beyond simple REST"
@@ -206,6 +206,7 @@ function functionProblems(fn: unknown, i: number, auth: string | null): Problem[
     const constants = isObject(call.constants) ? call.constants.headers : undefined
     out.push(...headers(constants, [...at, "call", "constants", "headers"], auth))
   }
+  out.push(...refusedKeys(fn.confirm, ["by"], [...at, "confirm"], "a Custom API's summary is its own template"))
   if (!Array.isArray(fn.examples) || fn.examples.length === 0)
     out.push(problem(EXAMPLE_MISSING, dotted([...at, "examples"]), "each action has at least one example, which its input accepts"))
   return out
@@ -314,7 +315,7 @@ function covered(path: readonly PathPart[], named: readonly string[], branches: 
   )
 }
 
-function schemaProblems(document: unknown, named: readonly string[], compile: SchemaCompiler): [Problem[], boolean] {
+export function schemaProblems(document: unknown, named: readonly string[], compile: SchemaCompiler): [Problem[], boolean] {
   const issues = compile(connectorSchema)(document)
   const out: Problem[] = []
   for (const error of schemaErrors(issues)) {
@@ -325,7 +326,7 @@ function schemaProblems(document: unknown, named: readonly string[], compile: Sc
   return [out, issues.length === 0]
 }
 
-function exampleProblems(document: Json, compile: SchemaCompiler): Problem[] {
+export function exampleProblems(document: Json, compile: SchemaCompiler): Problem[] {
   const out: Problem[] = []
   document.functions.forEach((fn: Json, i: number) => {
     const check = compile(fn.input)
@@ -356,7 +357,7 @@ function rule(at: string, judge: () => void): Problem[] {
   return []
 }
 
-function ruleProblems(document: Json): Problem[] {
+export function ruleProblems(document: Json): Problem[] {
   const connector = document.connector
   const out = rule("connector.auth", () => checkAuth(connector, WHERE))
   document.functions.forEach((fn: Json, i: number) => {

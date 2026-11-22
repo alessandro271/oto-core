@@ -182,6 +182,15 @@ export type Auth =
    * la prochaine assertion (le jeton gardé est indexé par ses droits).
    */
   | ({ readonly kind: "oauth2_jwt_bearer"; readonly tokenUrl: string; readonly key: string } & ServiceAccountScopes)
+  /**
+   * Le jeton vient de l'hôte qui exécute, jamais d'un compte (profil hôte seulement, règle 26 ; docs/conception/
+   * profil-hote.md) : pour chaque appel, l'hôte obtient de `issuer` un jeton de la personne dont l'audience est `resource`,
+   * l'API décrite, et l'envoie en `Authorization: Bearer`. Deux voies, sans repli silencieux de l'une à l'autre : l'échange
+   * de jeton (RFC 8693) du jeton reçu, pour ses clients first-party ; le consentement de la personne (code d'autorisation
+   * et jeton de rafraîchissement gardé par l'hôte), pour les clients third-party. Les points d'accès sont ceux que publie
+   * l'émetteur ; le client de l'hôte est le sien, jamais dans la description. Aucun `credential`.
+   */
+  | { readonly kind: "host_delegated"; readonly issuer: string; readonly resource: string }
   | { readonly kind: "none" }
 
 /**
@@ -472,8 +481,12 @@ export type ConnectorFunction = {
   readonly pagination?: Pagination
   readonly output?: Output
   readonly cost?: Cost
-  /** Gabarit du résumé montré avant d'exécuter une fonction sensible, avec des `{param}`. */
-  readonly confirm?: { readonly summary: string }
+  /**
+   * La confirmation d'une fonction sensible : le gabarit du résumé que l'hôte remplit, ou `by: "host"`, les deux temps de
+   * l'API elle-même (profil hôte seulement, règle 26) : appelée sans le paramètre de query réservé `confirm`, elle répond
+   * `202 { status: "needs_confirmation", summary }` sans rien faire ; appelée avec `confirm=true`, elle exécute.
+   */
+  readonly confirm?: { readonly summary: string; readonly by?: never } | { readonly by: "host"; readonly summary?: never }
 }
 
 /** Où lire le solde d'un compte payant dans la réponse de la sonde, et le seuil sous lequel elle n'est pas saine. */
