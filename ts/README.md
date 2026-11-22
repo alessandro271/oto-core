@@ -47,6 +47,11 @@ const problems = validate(document, compile) // [] → saved; else each problem 
 const connector = toDefinition(document)
 ```
 
+The same module imports an OpenAPI document: `fromOpenApi(document, { compile, yaml })` proposes candidates for a Custom
+API (a YAML text needs the host's YAML reader, `yaml`), and `fromHostOpenApi(document, { compile, reserved })` reads the
+OpenAPI document of a host's own API (the host profile, `x-oto-*` extensions): one connector per namespace, named
+`namespace.verb`, authenticated by `host_delegated`, or every problem of the document with its code.
+
 The package ships its TypeScript sources (`src/*.ts`), not compiled JavaScript: the host transpiles them (with Next.js,
 list the package in `transpilePackages`).
 
