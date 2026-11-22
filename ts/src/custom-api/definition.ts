@@ -136,7 +136,7 @@ export function functionDefinition(connector: string, fn: Json): ConnectorFuncti
   if ("pagination" in fn) out.pagination = pagination(fn.pagination)
   if ("output" in fn) out.output = output(fn.output)
   if ("cost" in fn) out.cost = cost(fn.cost)
-  if ("confirm" in fn) out.confirm = { summary: fn.confirm.summary }
+  if ("confirm" in fn) out.confirm = "by" in fn.confirm ? { by: fn.confirm.by } : { summary: fn.confirm.summary }
   return out
 }
 

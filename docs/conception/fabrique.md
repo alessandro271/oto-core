@@ -1,7 +1,7 @@
 # La fabrique
 
 - **Statut** : proposé
-- **Dernière révision** : 2026-11-19
+- **Dernière révision** : 2026-11-22
 
 ## Résumé
 
@@ -56,6 +56,7 @@ Chaque `connectors/<nom>/connector.yaml`, validé contre `connectors/connector.s
 23. le corps en liste ([corps d'une requête](corps-de-requete.md), « Le corps en liste », 2026-11-11) : `call.body_list: true` exige un corps (une table non vide, l'argument du corps entier ou une constante du corps : `body_list_without_body`), une méthode qui en envoie un, jamais `GET` (`body_list_method`), et aucune partie fichier (`body_list_multipart`). Jugée dans cet ordre, après les règles 20 et 22 ; le message nomme le fichier, la fonction et le code, le même que celui des cas communs et d'oto-core.
 24. le préfixe réservé ([Custom API](custom-api.md), 2026-11-19) : ni le nom ni l'espace d'un connecteur partagé ne commencent par `custom_`, le préfixe des définitions d'une organisation.
 25. les accès ([compte](compte.md), « Plusieurs accès », 2026-11-19) : un connecteur qui s'ouvre par plusieurs (`accesses`) donne à chacun un nom unique ; les règles 2, 3, 5, 6, 7 et 8, qui lisent `auth`, `credential` ou `modes`, sont jugées pour chaque accès, sur le connecteur tel que cet accès le voit, et un refus nomme l'accès. Le schéma exige des niveaux d'accès dans chaque accès, et refuse `auth`, `credential` ou `modes` à côté de `accesses`.
+26. le profil hôte ([profil hôte](profil-hote.md), décidé par Alexis le 2026-11-22) : un connecteur partagé ne porte ni `auth.kind: host_delegated`, à aucun de ses accès, ni `confirm.by: host` ; ces formes n'appartiennent qu'à la définition que le profil hôte tire du document OpenAPI d'un hôte. Le schéma les admet ; la règle les refuse sur `connectors/<nom>/connector.yaml`.
 
 Les règles 1 à 5, 9 à 11, 15, 18, 20, 22 et 23 vivent dans la lib (`oto/connectors/rules/`), une seule copie : la fabrique les applique et les réexporte, et le profil [Custom API](custom-api.md) les applique à la définition d'une organisation. La fabrique écrit aussi la copie distribuée du schéma, `oto/connectors/connector.schema.json`, que `--check` compare à l'octet près, et sa copie TypeScript, `ts/src/connector-schema.ts` (`connectorSchema`), que le module Custom API du paquet passe au validateur de l'hôte.
 
@@ -307,3 +308,4 @@ Décidé par Alexis le 2026-11-09 (oto-now/connectors#206). La lib reçoit un mo
 - 2026-11-19 : règle 24, le préfixe `custom_` réservé aux définitions Custom API ; les règles dont le profil Custom API a besoin passent dans la lib (`oto/connectors/rules/`), appelées par la fabrique ; la fabrique écrit la copie distribuée du schéma — décidé par le mainteneur (source : lot 4 de la bascule des connecteurs d'oto 1 dans la lib).
 - 2026-11-19 : copie TypeScript du schéma, `ts/src/connector-schema.ts`, pour le module Custom API du paquet — décidé par le mainteneur (source : lot 4 de la bascule des connecteurs d'oto 1 dans la lib).
 - 2026-11-19 : règle 25, plusieurs accès (`accesses`) ; la sortie TypeScript porte `accesses` à la place de `auth`, `credential` et `modes` ; la carte du parc donne le type de chaque accès ; le moteur Python exécute l'accès du compte (`access`) et `oauth2_user` avec le jeton de l'hôte (`token`) — décidé par le mainteneur (source : oto-now/connectors#244, lot 2).
+- 2026-11-22 : règle 26, les formes du profil hôte (`host_delegated`, `confirm.by: host`) refusées à un connecteur partagé — décidé par Alexis (source : la conception des fonctions d'un hôte, dans oto-core).

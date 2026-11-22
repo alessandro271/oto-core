@@ -1,7 +1,7 @@
 # Format de description d'un connecteur
 
 - **Statut** : validé par le mainteneur le 29/09/2026
-- **Dernière révision** : 2026-11-19
+- **Dernière révision** : 2026-11-22
 
 ## Résumé
 
@@ -42,6 +42,7 @@ Un connecteur partagé se décrit dans un fichier YAML, `connectors/<nom>/connec
 | [Coût et solde](cout-et-solde.md) | `cost`, `probe`, `probe.balance`. |
 | [Travaux longs](travaux-longs.md) | `async` et `background`. |
 | [Custom API](custom-api.md) | Le profil fermé du format pour la définition d'un outil par une organisation, l'import OpenAPI et la reprise d'oto 1. |
+| [Profil hôte](profil-hote.md) | Les fonctions de l'API propre d'un hôte, décrite en OpenAPI : `auth.kind: host_delegated`, `confirm.by: host`. |
 
 ### Le fichier
 
@@ -102,7 +103,7 @@ Les champs du compte (`auth`, `credential`, `accesses`, `settings`, `account_ide
 | `async` | non | La fonction soumet un travail relevé plus tard : `collect` (la relève), `job_id` (`from`, `to`), `within_s` ou `no_deadline` ; voir [travaux longs](travaux-longs.md). |
 | `background` | non | `true` : le tiers répond en minutes, l'hôte exécute la fonction en tâche de fond et rend aussitôt un identifiant de travail ; exige un `timeout_s` propre ; voir [travaux longs](travaux-longs.md). |
 | `cost` | non | Ce que coûte un appel : `per` (`request`, `page` ou `item`), `quantity` (ce que coûte une requête, `request` et `page`), `items` et `times` (les listes comptées, `per: item`) ou `weights` (le poids des valeurs que liste chaque élément), `unit`, `settle` (la quantité réelle relue, et `scale`, son facteur vers `unit`) ; voir [coût et solde](cout-et-solde.md). |
-| `confirm` | si `sensitive` | `summary`, gabarit du résumé montré avant exécution (`Validate invoice {id}: irreversible.`). |
+| `confirm` | si `sensitive` | `summary`, gabarit du résumé montré avant exécution (`Validate invoice {id}: irreversible.`) ; ou `by: host`, les deux temps de l'API elle-même, au [profil hôte](profil-hote.md) seulement (règle 26). |
 
 
 **Lire et agir.** Chaque connecteur à effet se partage en deux côtés : `<connecteur>` (lire et simuler, brouillon compris) et `<connecteur>_act` (tout ce qui engage ou détruit : envoi, corbeille, archive, déplacement). Le partage se lit sur `act`, fonction par fonction : une seule description, un seul compte, et l'hôte sert les fonctions `act` sous le nom `<connecteur>_act.<fonction>`, les autres sous `<connecteur>.<fonction>`. `class` dit ce que fait une fonction et si elle se confirme ; `act`, de quel côté elle est servie : un brouillon est une écriture (`write`) qui reste du côté lecture (`act: false`). Une écriture qui crée un enregistrement, même réversible, garde `act: true` (une facture modifiable après finalisation, un devis sans brouillon), comme tout appel qui dépense des crédits du compte sur une personne ou une entreprise, ou qui envoie réellement (un test anti-spam). Une suppression est sensible.
@@ -216,3 +217,4 @@ Deux gardes de CI :
 - 2026-11-19 : la définition Custom API d'une organisation est un fichier du format, restreint par un profil fermé ([Custom API](custom-api.md)) ; `jsonschema` devient une dépendance de la lib — décidé par le mainteneur (source : lot 4 de la bascule des connecteurs d'oto 1 dans la lib).
 - 2026-11-19 : `connector.description` et `connector.logo_domain`, facultatifs, projetés en `description` et `logoDomain`, avec les contrôles qu'oto-core applique à leur déclaration ; les connecteurs existants ne les portent pas encore — décidé par le mainteneur (source : [Custom API](custom-api.md), reprise de la description et du logo d'oto 1).
 - 2026-11-19 : `accesses`, plusieurs accès aux mêmes fonctions, à la place de `auth`, `credential` et `modes` ([compte](compte.md), « Plusieurs accès ») — décidé par le mainteneur (source : oto-now/connectors#244, lot 2).
+- 2026-11-22 : huitième mode d'authentification, `host_delegated` (le jeton vient de l'hôte qui exécute), et `confirm: { by: host }`, réservés au [profil hôte](profil-hote.md) ; règle 26 — décidé par Alexis (source : la conception des fonctions d'un hôte, dans oto-core).

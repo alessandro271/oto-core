@@ -1,9 +1,10 @@
 """Les cas communs du profil Custom API (`connectors/_cases/custom_api.yaml`), joués côté Python, une ligne par cas.
 
 Chaque définition valide passe le profil sans un problème ; chaque variante refusée donne exactement ses codes (et les
-règles du format nommées) ; chaque document OpenAPI donne ses candidats, ses opérations écartées et les problèmes du
-connecteur proposé ; chaque application d'oto 1 donne son statut, ses codes bloquants et les parties attendues du
-document. Le module TypeScript du paquet de l'hôte joue les mêmes cas.
+règles du format nommées) ; chaque document OpenAPI donne ses candidats, ses opérations écartées, les problèmes du
+connecteur proposé, et en entier le connecteur et chaque fonction ; chaque application d'oto 1 donne son statut, ses
+codes bloquants et les parties attendues du document. Le module TypeScript du paquet de l'hôte joue les mêmes cas
+(`ts/test/custom-api.test.ts`), la reprise d'oto 1 à part.
 """
 
 from __future__ import annotations
@@ -68,6 +69,8 @@ def test_openapi(case):
     ] == case["candidates"]
     assert [{k: s[k] for k in ("method", "path", "code")} for s in result["skipped"]] == case["skipped"]
     assert sorted(p["code"] for p in result["problems"]) == sorted(case["connector_problems"])
+    assert result["connector"] == case["connector"]
+    assert [c["function"] for c in result["candidates"]] == case["functions"]
 
 
 @pytest.mark.parametrize(

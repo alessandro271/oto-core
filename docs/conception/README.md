@@ -30,7 +30,8 @@ Les documents de conception de ce dépôt : pour chaque sujet, **comment** c'est
 | [Travaux longs](travaux-longs.md) | Comment dire un travail asynchrone tenu par le tiers, ou un appel synchrone de plusieurs minutes ? | validé avec Alexis le 29/09/2026 ; révisé le 03/11/2026 |
 | [La fabrique](fabrique.md) | Comment un fichier de description devient-il des définitions TypeScript que le paquet d'oto 2 adapte, et une description que le moteur Python de la lib exécute pour oto 1 ? | proposé |
 | [Niveaux d'accès](niveaux-d-acces.md) | Comment ouvrir un connecteur OAuth en lecture seule, ou à un sous-ensemble de ses droits ? | validé avec Alexis le 14/10/2026 |
-| [Custom API](custom-api.md) | Comment une organisation décrit-elle un outil que le catalogue n'a pas, et comment reprend-on les définitions d'oto 1 ? | validé avec le mainteneur le 19/11/2026 |
+| [Custom API](custom-api.md) | Comment une organisation décrit-elle un outil que le catalogue n'a pas, et comment reprend-on les définitions d'oto 1 ? | validé avec le mainteneur le 19/11/2026 ; révisé le 22/11/2026 |
+| [Le profil hôte](profil-hote.md) | Comment les fonctions d'un hôte, décrites en OpenAPI, deviennent-elles des connecteurs servis sous le jeton de la personne ? | validé par Alexis le 22/11/2026 (contrat et jeton) ; forme proposée |
 
 ## Anciens identifiants → document
 

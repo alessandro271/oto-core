@@ -258,7 +258,7 @@ export function checkAuth(connector: Json, where: string): void {
 /** L'en-tête que pose l'authentification, ou `null`. */
 export function authHeader(auth: Json): string | null {
   if (auth.kind === "api_key") return auth.in === "header" ? auth.name : null
-  if (["bearer", "basic", "oauth2_client_credentials", "oauth2_user", "oauth2_jwt_bearer"].includes(auth.kind))
+  if (["bearer", "basic", "oauth2_client_credentials", "oauth2_user", "oauth2_jwt_bearer", "host_delegated"].includes(auth.kind))
     return "Authorization"
   return null
 }

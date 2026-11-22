@@ -2,15 +2,16 @@
 # with their codes, OpenAPI documents with the candidates they give, and definitions of oto 1 with their takeover.
 #
 # Synthetic: made-up tools, addresses in domains reserved for tests. tests/test_custom_api_cases.py plays them against
-# the Python package (`oto.connectors.custom_api`); the TypeScript module of the host package plays the same cases.
+# the Python package (`oto.connectors.custom_api`); the TypeScript module of the host package plays the same cases
+# (ts/test/custom-api.test.ts), the takeover of oto 1 aside, which is Python only.
 #
 # - valid: a definition the profile accepts (`validate` finds nothing), by name;
 # - refused: a valid definition (`base`) changed by `changes`, each a dotted path (a list index as a number) and either
 #   `value` (set) or `remove: true`; `codes` is the set of the codes found, `rules` the set of the rules of the format
 #   named by `custom_api_rule_broken`, when it has a code;
 # - openapi: a document (a text, JSON or YAML), the names of the candidates with their problem codes, the operations
-#   skipped by method, path and code, and the problem codes of the connector proposed; or `refused`, the code of a
-#   document that is none;
+#   skipped by method, path and code, the problem codes of the connector proposed, and, whole, the connector proposed
+#   and the function of each candidate; or `refused`, the code of a document that is none;
 # - oto1: an application of oto 1, the status of its takeover and its blocking codes; `expected` gives parts of the
 #   document built: the connector's keys it names, and the functions, whole.
 
@@ -272,6 +273,15 @@ refused:
     changes: [{ path: functions.0.output.strip, value: [internal_notes, internal_notes.author] }]
     codes: [custom_api_rule_broken]
     rules: [strip_path_overlaps]
+  - name: token_of_the_host
+    base: acme_planning
+    changes:
+      - { path: connector.auth, value: { kind: host_delegated, issuer: "https://auth.acme-planning.test", resource: "https://api.acme-planning.test" } }
+    codes: [custom_api_auth_not_supported]
+  - name: confirmed_by_the_host
+    base: acme_tickets
+    changes: [{ path: functions.1.confirm, value: { by: host } }]
+    codes: [custom_api_key_not_allowed]
   - name: argument_goes_nowhere
     base: acme_tickets
     changes: [{ path: functions.0.input.properties.verbose, value: { type: boolean } }]
@@ -354,6 +364,96 @@ openapi:
       - { method: GET, path: /external, code: openapi_ref_external }
       - { method: GET, path: /session, code: openapi_cookie_parameter }
     connector_problems: []
+    connector:
+      name: custom_acme_planning
+      label: Acme Planning
+      namespace: custom_acme_planning
+      version: 1.0.0
+      api_version: '2'
+      base_url: https://api.acme-planning.test/v2
+      auth: {kind: api_key, in: header, name: X-Api-Token, key: token}
+      credential:
+      - {name: token, label: API key, secret: true}
+      modes: [byo_user, byo_org]
+      errors:
+      - status: [400, 422]
+        code: invalid_request
+        retryable: false
+        message: 'Acme Planning rejected the request: check the arguments.'
+      - {status: 401, code: unauthorized, retryable: false, message: 'Acme Planning refuses the credential of this account:
+          it must be set again.', marks_account: credential_rejected}
+      - {status: 403, code: forbidden, retryable: false, message: 'Acme Planning refused: this account lacks the right for
+          this object or action.'}
+      - {status: 404, code: not_found, retryable: false, message: Acme Planning object not found.}
+      - {status: 429, code: rate_limited, retryable: true, message: 'Acme Planning rate limit reached: retry later.'}
+      - status: [500, 502, 503, 504]
+        code: upstream_unavailable
+        retryable: true
+        message: 'Acme Planning is temporarily unavailable: retry later.'
+    functions:
+    - name: list_shifts
+      class: read
+      description: Shifts of a team
+      input:
+        type: object
+        additionalProperties: false
+        properties:
+          team_id: {type: string}
+          from: {type: string}
+          x_trace: {type: string}
+        required: [team_id]
+      examples:
+      - title: From the document
+        input: {team_id: tm_42}
+      call:
+        method: GET
+        path: /teams/{team_id}/shifts
+        query: {from: from}
+        headers: {X-Trace: x_trace}
+    - name: create_shift
+      class: write
+      description: POST /teams/{team_id}/shifts
+      input:
+        type: object
+        additionalProperties: false
+        properties:
+          team_id: {type: string}
+          employee_id: {type: string}
+          note:
+            type: [string, 'null']
+        required: [team_id, employee_id]
+      examples:
+      - title: From the document
+        input: {team_id: tm_42, employee_id: em_7}
+      call:
+        method: POST
+        path: /teams/{team_id}/shifts
+        body: {employeeId: employee_id, note: note}
+    - name: list_shifts_2
+      class: sensitive
+      effect: destroy
+      confirm: {summary: 'DELETE /teams/{team_id}/shifts: irreversible.'}
+      description: DELETE /teams/{team_id}/shifts
+      input:
+        type: object
+        additionalProperties: false
+        properties:
+          team_id: {type: string}
+        required: [team_id]
+      examples:
+      - title: From the document
+        input: {team_id: tm_42}
+      call: {method: DELETE, path: '/teams/{team_id}/shifts'}
+    - name: get_reports
+      class: read
+      description: GET /reports/{report_id}
+      input:
+        type: object
+        additionalProperties: false
+        properties:
+          report_id: {type: string}
+        required: [report_id]
+      call: {method: GET, path: '/reports/{report_id}'}
 
   - name: swagger_2_json
     document: |
@@ -374,6 +474,65 @@ openapi:
     skipped:
       - { method: POST, path: /items/import, code: openapi_body_not_json }
     connector_problems: []
+    connector:
+      name: custom_acme_stock
+      label: Acme Stock
+      namespace: custom_acme_stock
+      version: 1.0.0
+      api_version: '1'
+      base_url: https://stock.example.com/v1
+      auth: {kind: basic, username: username, password: password}
+      credential:
+      - {name: username, label: Username, secret: false}
+      - {name: password, label: Password, secret: true}
+      modes: [byo_user, byo_org]
+      errors:
+      - status: [400, 422]
+        code: invalid_request
+        retryable: false
+        message: 'Acme Stock rejected the request: check the arguments.'
+      - {status: 401, code: unauthorized, retryable: false, message: 'Acme Stock refuses the credential of this account: it
+          must be set again.', marks_account: credential_rejected}
+      - {status: 403, code: forbidden, retryable: false, message: 'Acme Stock refused: this account lacks the right for this
+          object or action.'}
+      - {status: 404, code: not_found, retryable: false, message: Acme Stock object not found.}
+      - {status: 429, code: rate_limited, retryable: true, message: 'Acme Stock rate limit reached: retry later.'}
+      - status: [500, 502, 503, 504]
+        code: upstream_unavailable
+        retryable: true
+        message: 'Acme Stock is temporarily unavailable: retry later.'
+    functions:
+    - name: list_items
+      class: read
+      description: GET /items
+      input:
+        type: object
+        additionalProperties: false
+        properties:
+          limit: {type: integer}
+      examples:
+      - title: Without arguments
+        input: {}
+      call:
+        method: GET
+        path: /items
+        query: {limit: limit}
+    - name: create_item
+      class: write
+      description: POST /items
+      input:
+        type: object
+        additionalProperties: false
+        properties:
+          sku: {type: string}
+        required: [sku]
+      examples:
+      - title: From the document
+        input: {sku: A-1}
+      call:
+        method: POST
+        path: /items
+        body: {sku: sku}
 
   - name: server_variables_and_openid
     document: |
@@ -389,6 +548,41 @@ openapi:
       - { name: me, problems: [] }
     skipped: []
     connector_problems: [openapi_openid_connect, openapi_server_variables]
+    connector:
+      name: custom_acme_desk
+      label: Acme Desk
+      namespace: custom_acme_desk
+      version: 1.0.0
+      api_version: '1'
+      auth: {kind: none}
+      modes: [byo_user, byo_org]
+      errors:
+      - status: [400, 422]
+        code: invalid_request
+        retryable: false
+        message: 'Acme Desk rejected the request: check the arguments.'
+      - {status: 401, code: unauthorized, retryable: false, message: Acme Desk requires an authentication this definition
+          does not declare.}
+      - {status: 403, code: forbidden, retryable: false, message: 'Acme Desk refused: this account lacks the right for this
+          object or action.'}
+      - {status: 404, code: not_found, retryable: false, message: Acme Desk object not found.}
+      - {status: 429, code: rate_limited, retryable: true, message: 'Acme Desk rate limit reached: retry later.'}
+      - status: [500, 502, 503, 504]
+        code: upstream_unavailable
+        retryable: true
+        message: 'Acme Desk is temporarily unavailable: retry later.'
+    functions:
+    - name: me
+      class: read
+      description: GET /me
+      input:
+        type: object
+        additionalProperties: false
+        properties: {}
+      examples:
+      - title: Without arguments
+        input: {}
+      call: {method: GET, path: /me}
 
   - name: oauth2_flows
     document: |
@@ -410,6 +604,49 @@ openapi:
       - { name: list_messages, problems: [] }
     skipped: []
     connector_problems: [custom_api_schema_invalid]
+    connector:
+      name: custom_acme_mail
+      label: Acme Mail
+      namespace: custom_acme_mail
+      version: 1.0.0
+      api_version: '1'
+      base_url: https://mail.example.com/api
+      auth:
+        kind: oauth2_user
+        authorize_url: https://mail.example.com/oauth/authorize
+        token_url: https://mail.example.com/oauth/token
+        client_auth: body
+        refresh: refresh_token
+        rotates: false
+        scopes: [mail.read]
+      modes: [byo_user]
+      errors:
+      - status: [400, 422]
+        code: invalid_request
+        retryable: false
+        message: 'Acme Mail rejected the request: check the arguments.'
+      - {status: 401, code: authorization_expired, retryable: false, message: 'Acme Mail no longer accepts this authorization:
+          the person must connect again.', marks_account: credential_rejected}
+      - {status: 403, code: forbidden, retryable: false, message: 'Acme Mail refused: this account lacks the right for this
+          object or action.'}
+      - {status: 404, code: not_found, retryable: false, message: Acme Mail object not found.}
+      - {status: 429, code: rate_limited, retryable: true, message: 'Acme Mail rate limit reached: retry later.'}
+      - status: [500, 502, 503, 504]
+        code: upstream_unavailable
+        retryable: true
+        message: 'Acme Mail is temporarily unavailable: retry later.'
+    functions:
+    - name: list_messages
+      class: read
+      description: GET /messages
+      input:
+        type: object
+        additionalProperties: false
+        properties: {}
+      examples:
+      - title: Without arguments
+        input: {}
+      call: {method: GET, path: /messages}
 
   - name: not_a_document
     document: |

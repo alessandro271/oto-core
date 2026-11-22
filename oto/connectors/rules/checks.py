@@ -104,10 +104,14 @@ def check_auth(connector: dict, where: str) -> None:
             raise DescriptionError(f"{where}: auth.key names {auth['key']!r}, which must be a secret field (secret: true)")
 
 
+#: The authentications sent in `Authorization` (a bearer token, or basic).
+BEARER_KINDS = ("bearer", "basic", "oauth2_client_credentials", "oauth2_user", "oauth2_jwt_bearer", "host_delegated")
+
+
 def _auth_header(auth: dict) -> str | None:
     if auth["kind"] == "api_key":
         return auth["name"] if auth["in"] == "header" else None
-    if auth["kind"] in ("bearer", "basic", "oauth2_client_credentials", "oauth2_user", "oauth2_jwt_bearer"):
+    if auth["kind"] in BEARER_KINDS:
         return "Authorization"
     return None
 

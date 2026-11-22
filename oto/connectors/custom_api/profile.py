@@ -102,6 +102,8 @@ MODES = ("byo_user", "byo_org")
 CALL_REFUSED = ("files",)
 OUTPUT_REFUSED = ("file",)
 PROBE_REFUSED = ("balance",)
+#: The API's own two steps (`confirm.by: host`) belong to the host profile.
+CONFIRM_REFUSED = ("by",)
 #: Headers that carry an identity or route the request: never a constant nor an argument of a definition.
 FORBIDDEN_HEADERS = ("authorization", "cookie", "set-cookie", "host", "proxy-authorization", "x-api-key", "api-key")
 #: Host names that only resolve inside a network.
@@ -271,6 +273,9 @@ def _function_problems(function: object, i: int, auth_header: str | None) -> lis
             at + ("call", "constants", "headers"),
             auth_header,
         )
+    out += _refused_keys(
+        function.get("confirm"), CONFIRM_REFUSED, at + ("confirm",), "a Custom API's summary is its own template"
+    )
     examples = function.get("examples")
     if not isinstance(examples, list) or not examples:
         out.append(

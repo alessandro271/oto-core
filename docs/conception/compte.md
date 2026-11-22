@@ -1,7 +1,7 @@
 # Le compte d'un connecteur
 
 - **Statut** : validé par le mainteneur le 29/09/2026 (issu du [format de description](format-de-description.md))
-- **Dernière révision** : 2026-11-19
+- **Dernière révision** : 2026-11-22
 
 ## Résumé
 
@@ -37,6 +37,7 @@ Un réglage n'est cité que par une adresse, et tout réglage est cité. `base_u
 - `oauth2_client_credentials` : `token_url` ou `token_urls`, `token_request` (`json`, `form`), `client_auth` (`body` ou `basic` : où vont l'identifiant et le secret du client), `client_id`, `client_secret`, `scope` et `expires_in_default` facultatifs ;
 - `oauth2_user`, le consentement d'une personne (code d'autorisation) : `authorize_url`, `token_url` ou `token_urls` (corps en formulaire), `client_auth`, `scopes`, `authorize_params` (constantes, jamais un paramètre que pose l'hôte : `client_id`, `redirect_uri`, `state`…), `pkce: S256`, `refresh` (`refresh_token` avec `rotates` booléen, `exchange` avec `exchange: { grant_type, token_param }`, ou `none`), `expires_in_default`, `identity` (qui a consenti, pour nommer le compte), `from_token: [instance_url]` (champs de la réponse de jeton gardés avec le compte, citables par `base_url`) ; à la place de `scopes`, `access_levels` et `scope_implies`, les [niveaux d'accès](niveaux-d-acces.md) ;
 - `oauth2_jwt_bearer`, un compte de service (RFC 7523) : `token_url`, `scopes`, `key` (« Le compte de service », ci-dessous) : `{ kind: oauth2_jwt_bearer, token_url: https://oauth2.googleapis.com/token, scopes: [https://www.googleapis.com/auth/webmasters.readonly], key: service_account_key }` ; à la place de `scopes`, `access_levels`, `scope_implies` et `default_level`, les [niveaux d'accès](niveaux-d-acces.md) ;
+- `host_delegated`, le jeton que l'hôte qui exécute obtient pour la personne, au [profil hôte](profil-hote.md) seulement (règle 26) : `issuer` (l'émetteur, en https, tel que ses jetons le nomment), `resource` (l'audience, l'API décrite) ; aucun `credential`. L'hôte l'obtient par échange de jeton (RFC 8693) pour ses clients first-party, par le consentement de la personne pour les autres, sans repli de l'une à l'autre ;
 - `none`.
 
 L'identité d'un `oauth2_user` est exigée : `identity: { function: get_me, path: userPrincipalName }`, une lecture sans argument requis, ou, quand l'API n'a pas de telle lecture, `identity: { url, path, scopes }` : une adresse complète en `https`, fixe (ni gabarit, ni query), hors de `base_url` (le service d'identité commun du fournisseur), lue en `GET` avec le jeton et sans argument, et les droits qu'elle exige, que le consentement demande à chaque niveau.
@@ -155,3 +156,4 @@ connector:
 - 2026-11-06 : septième mode, `oauth2_jwt_bearer`, le compte de service (RFC 7523) : un seul champ secret, le fichier JSON de la clé ; `token_url` fixe, `token_uri` étranger refusé ; assertion RS256 exacte et requête de jeton en formulaire ; cas communs `connectors/_cases/jwt_bearer.yaml` ; `sub` et l'assertion client par certificat hors périmètre — décidé par le mainteneur (source : lecture de Search Console par un agent).
 - 2026-11-13 : le compte de service reçoit des niveaux d'accès (`access_levels`, `scope_implies`) et un niveau par défaut (`default_level`), plutôt qu'un second connecteur ; le `scope` de l'assertion est celui du niveau du compte, sans consentement — décidé par le mainteneur (source : envoi d'un sitemap à Search Console).
 - 2026-11-19 : plusieurs accès à un même connecteur (`accesses`), quand ils servent les mêmes fonctions ; « Un accès propre, un connecteur » devient « Un compte, un accès » ; `google_search_console` 2.0.0, compte de service ou connexion Google d'une personne — décidé par le mainteneur (source : oto-now/connectors#244, lot 2, réunir le `search_console` d'oto 1 et `google_search_console`).
+- 2026-11-22 : `host_delegated`, le jeton de l'hôte qui exécute, sans credential, réservé au [profil hôte](profil-hote.md) — décidé par Alexis (source : la conception des fonctions d'un hôte, dans oto-core).

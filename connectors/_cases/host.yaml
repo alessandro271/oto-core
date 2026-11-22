@@ -1,0 +1,428 @@
+# Common cases of the host profile (docs/conception/profil-hote.md): the OpenAPI document of a host's own API, the
+# definition it gives, and the variants refused with their problems.
+#
+# Synthetic: a made-up host, addresses in domains reserved for tests. tests/test_host_cases.py plays them against the
+# Python package (`oto.connectors.custom_api.from_host_openapi`); ts/test/host.test.ts plays the same cases against the
+# TypeScript module (`fromHostOpenApi`), Ajv as the JSON Schema validator.
+#
+# - reserved: the namespaces the caller already serves, passed to every case;
+# - documents: base documents, by name (parsed objects);
+# - valid: a base, changed by `changes` (as below), and what its definition gives: `namespaces` (the connectors, in
+#   order), `functions` (the host's metadata of each function, whole), `served` (each function of the format by its
+#   qualified name, whole) and `connector` (keys of each connector block);
+# - refused: a base changed by `changes`, each a dotted path (a list index as a number) and either `value` (set) or
+#   `remove: true`; or `text`, a document given as a text. `problems` is the set of the problems found, each its code
+#   and its place, and `rules` the rules of the format named by `host_rule_broken`, when they have a code.
+
+reserved: [node, table, comment, upload, file, job, mail, write]
+
+documents:
+  - name: projects_and_shares
+    document:
+      openapi: 3.1.0
+      info: { title: Host API, version: 2.4.0 }
+      servers: [{ url: /api/v2/ }]
+      x-oto:
+        functions: /me/functions
+        issuer: https://auth.example.test/oidc
+        resource: https://api.example.test
+        roles: { admin: Administrator, coach: Coach, member: Member }
+        families: { project: Projects, share: Shares }
+      paths:
+        /projects:
+          get:
+            operationId: project.list
+            summary: Projects the person can see, with their stage and link.
+            description: List the projects visible to the caller, 50 per page. Next, project.read.
+            x-oto-class: read
+            x-oto-family: project
+            x-oto-label: See my projects
+            x-oto-roles: [admin, coach, member]
+            x-oto-examples: [{}, { cursor: c-1 }]
+            x-oto-output: { items: data, strip: [internal] }
+            x-host-capability: projects.read
+            parameters:
+              - { name: cursor, in: query, schema: { type: string } }
+            responses: { "200": { description: Page of projects } }
+        /projects/{projectId}:
+          parameters:
+            - { name: projectId, in: path, required: true, schema: { type: string, minLength: 1 } }
+          get:
+            operationId: project.read
+            summary: One project, with its stages.
+            description: Read one project the caller can see, with its stages and their state.
+            x-oto-class: read
+            x-oto-family: project
+            x-oto-label: See a project
+            x-oto-roles: [admin, coach, member]
+            x-oto-examples: [{ projectId: p-0 }]
+            responses: { "200": { description: The project } }
+          patch:
+            operationId: project.rename
+            summary: Rename a project.
+            description: Give a project a new name, seen by everyone who sees the project.
+            x-oto-class: write
+            x-oto-family: project
+            x-oto-label: Rename a project
+            x-oto-roles: [admin, coach]
+            x-oto-examples: [{ projectId: p-0, name: New name }]
+            requestBody:
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    additionalProperties: false
+                    required: [name]
+                    properties: { name: { type: string, minLength: 1, maxLength: 120 } }
+            responses: { "200": { description: The project renamed } }
+        /shares:
+          post:
+            operationId: share.create
+            summary: Share a project with an outside person.
+            description: Share a project, read-only, with an email. Sensitive, the first call returns a summary.
+            x-oto-class: sensitive
+            x-oto-effect: send
+            x-oto-family: share
+            x-oto-label: Share a project outside
+            x-oto-roles: [admin, coach]
+            x-oto-examples: [{ projectId: p-0, email: a@example.test }]
+            parameters:
+              - { name: confirm, in: query, schema: { type: boolean } }
+            requestBody:
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    additionalProperties: false
+                    required: [projectId, email]
+                    properties: { projectId: { type: string }, email: { type: string } }
+            responses:
+              "202": { description: "{ status: needs_confirmation, summary }" }
+              "201": { description: Share created }
+
+valid:
+  - name: projects_and_shares
+    base: projects_and_shares
+    changes: []
+    namespaces: [project, share]
+    functions:
+      project.list: { label: See my projects, family: project, roles: [admin, coach, member],
+                      summary: "Projects the person can see, with their stage and link." }
+      project.read: { label: See a project, family: project, roles: [admin, coach, member],
+                      summary: "One project, with its stages." }
+      project.rename: { label: Rename a project, family: project, roles: [admin, coach], summary: Rename a project. }
+      share.create: { label: Share a project outside, family: share, roles: [admin, coach],
+                      summary: Share a project with an outside person. }
+    connector:
+      base_url: "{address}/api/v2"
+      settings: [{ name: address, label: Address of the host, type: url }]
+      auth: { kind: host_delegated, issuer: "https://auth.example.test/oidc", resource: "https://api.example.test" }
+      api_version: 2.4.0
+    served:
+      project.list:
+        name: list
+        class: read
+        description: List the projects visible to the caller, 50 per page. Next, project.read.
+        input: { type: object, additionalProperties: false, properties: { cursor: { type: string } } }
+        examples: [{ title: Example 1, input: {} }, { title: Example 2, input: { cursor: c-1 } }]
+        call: { method: GET, path: /projects, query: { cursor: cursor } }
+        output: { items: data, strip: [internal] }
+      project.read:
+        name: read
+        class: read
+        description: Read one project the caller can see, with its stages and their state.
+        input:
+          type: object
+          additionalProperties: false
+          properties: { project_id: { type: string, minLength: 1 } }
+          required: [project_id]
+        examples: [{ title: Example 1, input: { project_id: p-0 } }]
+        call: { method: GET, path: "/projects/{project_id}" }
+      project.rename:
+        name: rename
+        class: write
+        description: Give a project a new name, seen by everyone who sees the project.
+        input:
+          type: object
+          additionalProperties: false
+          properties: { project_id: { type: string, minLength: 1 }, name: { type: string, minLength: 1, maxLength: 120 } }
+          required: [project_id, name]
+        examples: [{ title: Example 1, input: { project_id: p-0, name: New name } }]
+        call: { method: PATCH, path: "/projects/{project_id}", body: { name: name } }
+      share.create:
+        name: create
+        class: sensitive
+        effect: send
+        description: Share a project, read-only, with an email. Sensitive, the first call returns a summary.
+        input:
+          type: object
+          additionalProperties: false
+          properties: { project_id: { type: string }, email: { type: string } }
+          required: [project_id, email]
+        examples: [{ title: Example 1, input: { project_id: p-0, email: a@example.test } }]
+        call: { method: POST, path: /shares, body: { projectId: project_id, email: email } }
+        confirm: { by: host }
+
+  - name: without_servers
+    base: projects_and_shares
+    changes:
+      - { path: servers, remove: true }
+    namespaces: [project, share]
+    connector: { base_url: "{address}" }
+
+refused:
+  - name: swagger_2
+    base: projects_and_shares
+    changes:
+      - { path: openapi, remove: true }
+      - { path: swagger, value: "2.0" }
+    problems: [[host_openapi_version, openapi]]
+
+  - name: server_absolute
+    base: projects_and_shares
+    changes:
+      - { path: servers.0.url, value: "https://api.example.test/v2" }
+    problems: [[host_server_not_relative, servers.0]]
+
+  - name: server_variables
+    base: projects_and_shares
+    changes:
+      - { path: servers.0.url, value: "/{tenant}/v2" }
+    problems: [[openapi_server_variables, servers.0]]
+
+  - name: two_servers
+    base: projects_and_shares
+    changes:
+      - { path: servers, value: [{ url: /api/v2 }, { url: /api/v3 }] }
+    problems: [[host_server_not_relative, servers]]
+
+  - name: server_of_an_operation
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.servers", value: [{ url: /api/v3 }] }
+    problems: [[host_server_not_relative, "paths./projects.get"]]
+
+  - name: root_missing
+    base: projects_and_shares
+    changes:
+      - { path: x-oto, remove: true }
+    problems: [[host_root_invalid, x-oto]]
+
+  - name: root_faults
+    base: projects_and_shares
+    changes:
+      - { path: x-oto.issuer, value: "http://auth.example.test/oidc" }
+      - { path: x-oto.resource, value: "api" }
+      - { path: x-oto.functions, value: "me/functions" }
+      - { path: x-oto.audience, value: api }
+      - { path: x-oto.roles, value: {} }
+    problems:
+      - [host_root_invalid, x-oto.issuer]
+      - [host_root_invalid, x-oto.resource]
+      - [host_root_invalid, x-oto.functions]
+      - [host_root_invalid, x-oto.roles]
+      - [host_extension_unknown, x-oto.audience]
+
+  - name: issuer_internal
+    base: projects_and_shares
+    changes:
+      - { path: x-oto.issuer, value: "https://auth.internal/oidc" }
+    problems: [[host_root_invalid, x-oto.issuer]]
+
+  - name: info_without_title
+    base: projects_and_shares
+    changes:
+      - { path: info.title, remove: true }
+    problems: [[host_root_invalid, info.title]]
+
+  - name: operation_id_in_snake_case
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.operationId", value: project_list }
+    problems: [[host_operation_id_invalid, "paths./projects.get.operationId"]]
+
+  - name: operation_id_missing
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.operationId", remove: true }
+    problems: [[host_operation_id_invalid, "paths./projects.get.operationId"]]
+
+  - name: namespace_reserved
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.operationId", value: table.list }
+    problems: [[host_namespace_reserved, "paths./projects.get.operationId"]]
+
+  - name: namespace_of_the_acting_side
+    base: projects_and_shares
+    changes:
+      - { path: "paths./shares.post.operationId", value: share_act.create }
+    problems: [[host_namespace_act, "paths./shares.post.operationId"]]
+
+  - name: name_twice
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects/{projectId}.get.operationId", value: project.list }
+    problems: [[host_name_collision, "paths./projects/{projectId}.get.operationId"]]
+
+  - name: texts
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.summary", value: "A summary longer than the ninety characters an index line takes, which this one is, by far." }
+      - { path: "paths./projects.get.description", remove: true }
+    problems:
+      - [host_summary_invalid, "paths./projects.get.summary"]
+      - [host_description_invalid, "paths./projects.get.description"]
+
+  - name: get_that_writes
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.x-oto-class", value: write }
+    problems: [[host_class_mismatch, "paths./projects.get.x-oto-class"]]
+
+  - name: post_that_reads
+    base: projects_and_shares
+    changes:
+      - { path: "paths./shares.post.x-oto-class", value: read }
+      - { path: "paths./shares.post.x-oto-effect", remove: true }
+    problems:
+      - [host_class_mismatch, "paths./shares.post.x-oto-class"]
+      - [host_confirm_reserved, "paths./shares.post.parameters"]
+
+  - name: extensions_missing
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.x-oto-label", remove: true }
+      - { path: "paths./projects.get.x-oto-class", remove: true }
+    problems:
+      - [host_extension_missing, "paths./projects.get.x-oto-label"]
+      - [host_extension_missing, "paths./projects.get.x-oto-class"]
+
+  - name: extension_unknown
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.x-oto-confirm", value: true }
+      - { path: "x-oto-families", value: {} }
+    problems:
+      - [host_extension_unknown, "paths./projects.get.x-oto-confirm"]
+      - [host_extension_unknown, "x-oto-families"]
+
+  - name: extensions_invalid
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.x-oto-family", value: billing }
+      - { path: "paths./projects.get.x-oto-effect", value: send }
+      - { path: "paths./projects.get.x-oto-roles", value: [admin, guest] }
+      - { path: "paths./projects.get.x-oto-class", value: browse }
+      - { path: "paths./projects.get.x-oto-label", value: " " }
+      - { path: "paths./projects.get.x-oto-output", value: { items: data, schema: {} } }
+    problems:
+      - [host_extension_invalid, "paths./projects.get.x-oto-family"]
+      - [host_extension_invalid, "paths./projects.get.x-oto-effect"]
+      - [host_extension_invalid, "paths./projects.get.x-oto-roles"]
+      - [host_extension_invalid, "paths./projects.get.x-oto-class"]
+      - [host_extension_invalid, "paths./projects.get.x-oto-label"]
+      - [host_extension_invalid, "paths./projects.get.x-oto-output"]
+
+  - name: no_example
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.x-oto-examples", value: [] }
+    problems: [[host_example_missing, "paths./projects.get.x-oto-examples"]]
+
+  - name: example_the_input_refuses
+    base: projects_and_shares
+    changes:
+      - { path: "paths./shares.post.x-oto-examples", value: [{ projectId: 7, email: a@example.test }] }
+    problems: [[host_example_invalid, "paths./shares.post.examples.0"]]
+
+  - name: example_with_an_unknown_argument
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.x-oto-examples", value: [{ page: 2 }] }
+    problems: [[host_example_invalid, "paths./projects.get.examples.0"]]
+
+  - name: body_open
+    base: projects_and_shares
+    changes:
+      - { path: "paths./shares.post.requestBody.content.application/json.schema.additionalProperties", remove: true }
+    problems: [[host_input_not_closed, "paths./shares.post.requestBody"]]
+
+  - name: confirm_on_a_write
+    base: projects_and_shares
+    changes:
+      - { path: "paths./shares.post.x-oto-class", value: write }
+      - { path: "paths./shares.post.x-oto-effect", remove: true }
+    problems: [[host_confirm_reserved, "paths./shares.post.parameters"]]
+
+  - name: sensitive_without_its_two_steps
+    base: projects_and_shares
+    changes:
+      - { path: "paths./shares.post.parameters", remove: true }
+      - { path: "paths./shares.post.responses.202", remove: true }
+    problems:
+      - [host_confirm_missing, "paths./shares.post.parameters"]
+      - [host_confirm_missing, "paths./shares.post.responses"]
+
+  - name: confirm_in_the_body
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects/{projectId}.patch.requestBody.content.application/json.schema.properties.confirm", value: { type: boolean } }
+    problems: [[host_confirm_reserved, "paths./projects/{projectId}.patch"]]
+
+  - name: confirm_in_capitals_in_the_query
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects/{projectId}.patch.parameters", value: [{ name: Confirm, in: query, schema: { type: boolean } }] }
+    problems: [[host_confirm_reserved, "paths./projects/{projectId}.patch"]]
+
+  - name: confirm_in_a_header
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects/{projectId}.patch.parameters", value: [{ name: confirm, in: header, schema: { type: boolean } }] }
+    problems: [[host_confirm_reserved, "paths./projects/{projectId}.patch"]]
+
+  - name: confirm_in_a_cookie
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects/{projectId}.patch.parameters", value: [{ name: CONFIRM, in: cookie, schema: { type: boolean } }] }
+    problems: [[host_confirm_reserved, "paths./projects/{projectId}.patch"]]
+
+  - name: confirm_beside_the_reserved_one
+    base: projects_and_shares
+    changes:
+      - { path: "paths./shares.post.requestBody.content.application/json.schema.properties.Confirm", value: { type: boolean } }
+    problems: [[host_confirm_reserved, "paths./shares.post"]]
+
+  - name: confirm_not_a_boolean
+    base: projects_and_shares
+    changes:
+      - { path: "paths./shares.post.parameters.0.schema.type", value: string }
+    problems: [[host_confirm_missing, "paths./shares.post.parameters"]]
+
+  - name: strip_overlaps
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.x-oto-output.strip", value: [internal, internal.notes] }
+    problems: [[host_rule_broken, "paths./projects.get.output.strip"]]
+    rules: [strip_path_overlaps]
+
+  - name: output_the_format_refuses
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.get.x-oto-output.items", value: "" }
+    problems: [[host_schema_invalid, "paths./projects.get.output.items"]]
+
+  - name: operations_the_import_cannot_say
+    base: projects_and_shares
+    changes:
+      - { path: "paths./projects.head", value: { operationId: project.peek } }
+      - { path: "paths./shares.post.requestBody.content", value: { multipart/form-data: { schema: { type: object } } } }
+    problems:
+      - [openapi_method_not_supported, "paths./projects.head"]
+      - [openapi_body_not_json, "paths./shares.post"]
+
+  - name: not_a_document
+    text: |
+      {"title": "not an API description"}
+    problems: [[openapi_not_a_document, ""]]

@@ -157,7 +157,12 @@ pas dire :
 25. les accès (`connector.accesses`, un connecteur qui s'ouvre par plusieurs, voir docs/conception/compte.md,
    « Plusieurs accès ») : chaque accès a un nom à lui ; les règles 2, 3, 5, 6, 7 et 8, qui lisent `auth`,
    `credential` ou `modes`, sont jugées pour chaque accès, sur le connecteur tel que cet accès le voit (ses `auth`,
-   `credential` et `modes` à la place de `accesses`) : la sonde et chaque fonction servent à chaque accès.
+   `credential` et `modes` à la place de `accesses`) : la sonde et chaque fonction servent à chaque accès ;
+26. le profil hôte (docs/conception/profil-hote.md, décidé par Alexis le 2026-11-22) : un connecteur partagé
+   ne porte ni `auth.kind: host_delegated` (le jeton vient de l'hôte qui exécute, pour l'API d'un hôte décrite en
+   OpenAPI) ni `confirm.by: host` (les deux temps de l'API elle-même) : ces formes n'appartiennent qu'à la définition
+   que le profil hôte tire d'un document OpenAPI (`oto.connectors.custom_api.host`). Jugée sur
+   `connectors/<nom>/connector.yaml` seulement (`check`), accès compris.
 
 Les règles 1 à 5, 9 à 11, 15, 18, 20, 22 et 23 vivent dans la lib (`oto/connectors/rules/`), une seule copie, que le profil Custom
 API applique aussi à la définition d'une organisation ; ce module les applique et les réexporte.
@@ -817,6 +822,7 @@ def check(data: dict, path: pathlib.Path) -> Description:
     if data["connector"]["name"] != path.parent.name:
         raise DescriptionError(f"{where}: connector.name {data['connector']['name']!r} is not the folder name")
     check_prefix(data["connector"], where)
+    check_host_forms(data, where)
     check_rules(data, where)
     return Description(path=path, data=data)
 
@@ -829,6 +835,26 @@ def check_prefix(connector: dict, where: str) -> None:
                 f"{where}: connector.{key} {connector[key]!r}: the prefix {CUSTOM_API_PREFIX!r} is reserved to the "
                 "Custom API definitions of an organisation"
             )
+
+
+def check_host_forms(data: dict, where: str) -> None:
+    """Règle 26 : `auth.kind: host_delegated` et `confirm.by: host` n'appartiennent qu'au profil hôte, jamais à un
+    connecteur partagé."""
+    connector = data["connector"]
+    for auth in [connector.get("auth"), *(access["auth"] for access in connector.get("accesses", []))]:
+        if auth is not None and auth["kind"] == "host_delegated":
+            raise DescriptionError(
+                f"{where}: auth.kind host_delegated belongs to the definition of a host's API (host profile), "
+                "never to a shared connector"
+            )
+    for function in data["functions"]:
+        if (function.get("confirm") or {}).get("by") == "host":
+            raise DescriptionError(
+                f"{where}: function {function['name']}: confirm.by host belongs to the definition of a host's API "
+                "(host profile), never to a shared connector"
+            )
+
+
 def access_views(data: dict, where: str) -> list[tuple[dict, str]]:
     """Règle 25 : la description telle que la voit chacun de ses accès, avec où le dire ; elle-même pour un connecteur
     qui ne déclare qu'un accès. Deux accès du même nom sont refusés."""

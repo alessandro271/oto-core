@@ -1,57 +1,36 @@
 /// <reference types="vite/client" />
 // Le module Custom API du paquet (`src/custom-api/`). Les cas communs `connectors/_cases/custom_api.yaml`, joués ici comme
 // côté Python (`tests/test_custom_api_cases.py`) : chaque définition valide passe le profil sans un problème, chaque
-// variante refusée donne exactement ses codes et les règles du format nommées. Puis la garde de la projection :
+// variante refusée donne exactement ses codes et les règles du format nommées ; chaque document OpenAPI donne, par
+// `fromOpenApi`, exactement ce que donne `from_openapi` côté Python. Puis la garde de la projection :
 // `toDefinition`, appliquée à chaque `connectors/*/connector.yaml`, donne exactement la définition que la fabrique a
 // générée dans `src/<nom>.ts`. Le validateur JSON Schema est Ajv, celui que l'hôte passerait.
-import { Ajv2020, type ValidateFunction } from "ajv/dist/2020.js"
 import { describe, expect, it } from "vitest"
-import { parse } from "yaml"
 import { connectors } from "../src"
-import { CODES, NotGenerated, toDefinition, validate, type SchemaCompiler } from "../src/custom-api"
-import type { JsonSchema } from "../src/types"
-
-// Comme `yaml.safe_load` côté Python : clés de fusion, ancres sans plafond (les descriptions en usent) ; le schéma
-// « core » de YAML 1.2, car celui de YAML 1.1 lirait `y` et `n` en booléens, ce que PyYAML ne fait pas.
-const read = (text: string) => parse(text, { schema: "core", merge: true, maxAliasCount: -1 })
+import { CODES, NotGenerated, OpenAPIRefused, fromOpenApi, toDefinition, validate } from "../src/custom-api"
+import { changed, compile, read } from "./schema-compiler"
 
 const casesText = import.meta.glob("../../connectors/_cases/custom_api.yaml", { query: "?raw", import: "default", eager: true })
 const descriptions = import.meta.glob("../../connectors/*/connector.yaml", { query: "?raw", import: "default", eager: true })
 
 type Change = { path: string; value?: unknown; remove?: boolean }
 type Refused = { name: string; base: string; changes: Change[]; codes: string[]; rules?: string[] }
-const cases = read(Object.values(casesText)[0] as string) as { valid: { name: string; document: unknown }[]; refused: Refused[] }
+type OpenApiCase = {
+  name: string
+  document: string
+  refused?: string
+  candidates: { name: string; problems: string[] }[]
+  skipped: { method: string; path: string; code: string }[]
+  connector_problems: string[]
+  connector: unknown
+  functions: unknown[]
+}
+const cases = read(Object.values(casesText)[0] as string) as {
+  valid: { name: string; document: unknown }[]
+  refused: Refused[]
+  openapi: OpenApiCase[]
+}
 const valid = new Map(cases.valid.map((c) => [c.name, c.document]))
-
-const ajv = new Ajv2020({ strict: false, validateFormats: false, allErrors: true })
-ajv.addKeyword({ keyword: "personal", schemaType: "boolean" })
-const compiled = new WeakMap<object, ValidateFunction>()
-const compile: SchemaCompiler = (schema: JsonSchema) => {
-  let check = compiled.get(schema)
-  if (check === undefined) {
-    check = ajv.compile(schema)
-    compiled.set(schema, check)
-  }
-  const run = check
-  return (value) => (run(value) ? [] : [...(run.errors ?? [])])
-}
-
-/** La définition après ses changements : chaque chemin à points, posé (`value`) ou retiré (`remove`). */
-function changed(document: unknown, changes: readonly Change[]): unknown {
-  const out = structuredClone(document)
-  for (const change of changes) {
-    const parts = change.path.split(".")
-    const last = parts.pop() as string
-    let node: any = out
-    for (const part of parts) node = node[Array.isArray(node) ? Number(part) : part]
-    const key = Array.isArray(node) ? Number(last) : last
-    if (change.remove) {
-      if (Array.isArray(node)) node.splice(key as number, 1)
-      else delete node[key]
-    } else node[key] = structuredClone(change.value)
-  }
-  return out
-}
 
 describe("custom api cases", () => {
   it.each(cases.valid.map((c) => [c.name, c.document] as const))("%s: valid", (_name, document) => {
@@ -63,6 +42,38 @@ describe("custom api cases", () => {
     expect([...new Set(found.map((p) => p.code))].sort(), JSON.stringify(found)).toEqual([...c.codes].sort())
     expect([...new Set(found.flatMap((p) => (p.rule ? [p.rule] : [])))].sort()).toEqual([...(c.rules ?? [])].sort())
     for (const p of found) expect(CODES).toContain(p.code)
+  })
+
+  it.each(cases.openapi.map((c) => [c.name, c] as const))("%s: the import gives what Python gives", (_name, c) => {
+    if (c.refused !== undefined) {
+      expect(() => fromOpenApi(c.document, { compile, yaml: read })).toThrow(OpenAPIRefused)
+      try {
+        fromOpenApi(c.document, { compile, yaml: read })
+      } catch (refused) {
+        expect((refused as OpenAPIRefused).code).toBe(c.refused)
+      }
+      return
+    }
+    const result = fromOpenApi(c.document, { compile, yaml: read })
+    expect(result.candidates.map((x: any) => ({ name: x.function.name, problems: x.problems.map((p: any) => p.code) }))).toEqual(c.candidates)
+    expect(result.skipped.map((s: any) => ({ method: s.method, path: s.path, code: s.code }))).toEqual(c.skipped)
+    expect(result.problems.map((p: any) => p.code).sort()).toEqual([...c.connector_problems].sort())
+    expect(result.connector).toStrictEqual(c.connector)
+    expect(result.candidates.map((x: any) => x.function)).toStrictEqual(c.functions)
+  })
+
+  it.each(cases.openapi.filter((c) => c.refused === undefined && !c.connector_problems.length).map((c) => [c.name, c] as const))(
+    "%s: the candidates without problem make a valid definition",
+    (_name, c) => {
+      const result = fromOpenApi(c.document, { compile, yaml: read })
+      const document = { connector: result.connector, functions: result.candidates.filter((x: any) => !x.problems.length).map((x: any) => x.function) }
+      expect(validate(document, compile)).toEqual([])
+    },
+  )
+
+  it("should refuse a text that is not JSON when no YAML reader is given, never guess", () => {
+    const yamlCase = cases.openapi.find((c) => c.name === "openapi_3_yaml") as OpenApiCase
+    expect(() => fromOpenApi(yamlCase.document, { compile })).toThrow("no YAML reader")
   })
 
   it("should refuse what is not an object, and an address that is not on the public internet", () => {
