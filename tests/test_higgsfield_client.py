@@ -293,3 +293,51 @@ def test_gpt_image_other_token_rates_are_not_priced():
     sentence = GPT_IMAGE.replace("image output $30", "image output $40")
     p = hf.price_of({"pricing_description": sentence}, {"quality": "high", "resolution": "4k"})
     assert p["usd"] is None and p["basis"].startswith("higgsfield_price_unknown: ") and "rates differ" in p["basis"]
+
+
+# --- price_of: resolution named before its rate (Kling 3.0 Turbo, Kling 4.0) ------
+# Read from the live estimate on 2026-11-22 (signals #1884, #1895): the parser named
+# "no rate by resolution" although the sentence lists one per resolution.
+KLING_40 = ("Standard self-serve rates in USD per video second: 720p: $0.1257; 1080p: $0.1879; "
+            "4K: $0.549. Total price = selected rate × output duration in seconds.\n\n"
+            "HDR adds $0.047 per second of output video at 1080p or $0.078 at 4K, after "
+            "base-price discounts, including fixed-price agreements. SDR has no additional charge.")
+KLING_30_TURBO = ("Standard self-serve rates in USD per video second: 720p: $0.0839; 1080p: $0.1049. "
+                  "Total price = selected rate × output duration in seconds.")
+
+
+def test_price_of_a_resolution_first_sentence_at_the_asked_resolution():
+    p = hf.price_of({"type": "description", "pricing_description": KLING_40},
+                    {"duration": 5, "resolution": "1080p"})
+    assert p["usd"] == round(0.1879 * 5, 4)
+    assert p["approximate"] is True
+
+
+def test_price_of_a_resolution_first_sentence_reads_4k_in_any_case():
+    p = hf.price_of({"pricing_description": KLING_40}, {"duration": 2, "resolution": "4K"})
+    assert p["usd"] == round(0.549 * 2, 4)
+    p = hf.price_of({"pricing_description": KLING_40}, {"duration": 2, "resolution": "4k"})
+    assert p["usd"] == round(0.549 * 2, 4)
+
+
+def test_price_of_a_resolution_first_sentence_never_reads_the_hdr_surcharge_as_a_rate():
+    p = hf.price_of({"pricing_description": KLING_40}, {"duration": 5})
+    assert p["usd"] == round(0.549 * 5, 4), "highest base rate, not the HDR surcharge"
+
+
+def test_price_of_refuses_an_hdr_job_priced_at_the_sdr_rate():
+    p = hf.price_of({"pricing_description": KLING_40},
+                    {"duration": 5, "resolution": "1080p", "hdr": True})
+    assert p["usd"] is None and "HDR" in p["basis"]
+
+
+def test_price_of_kling_30_turbo():
+    p = hf.price_of({"pricing_description": KLING_30_TURBO}, {"duration": 10, "resolution": "720p"})
+    assert p["usd"] == round(0.0839 * 10, 4)
+    p = hf.price_of({"pricing_description": KLING_30_TURBO}, {"duration": 10, "resolution": "4k"})
+    assert p["usd"] is None and "720p, 1080p" in p["basis"]
+
+
+def test_price_of_per_video_second_needs_a_duration():
+    p = hf.price_of({"pricing_description": KLING_30_TURBO}, {"resolution": "720p"})
+    assert p["usd"] is None and "duration" in p["basis"]

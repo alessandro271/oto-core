@@ -83,6 +83,12 @@ _IDEMPOTENCY_KEY = re.compile(r"^[\x21-\x7e]{1,255}$")
 
 # "$0.2056 per second of generated video at 480p, $0.4622 at 720p, and $1.1372 at 1080p"
 _RATE = re.compile(r"\$(\d+(?:\.\d+)?)(?: per second of generated video)? at (\d{3,4}p)")
+# The resolution can also come FIRST (Kling 3.0 Turbo, Kling 4.0, read 2026-11-22):
+# "Standard self-serve rates in USD per video second: 720p: $0.1257; 1080p: $0.1879;
+# 4K: $0.549. Total price = selected rate × output duration in seconds."
+_RATE_RES_FIRST = re.compile(r"\b(\d{3,4}p|\dk): \$(\d+(?:\.\d+)?)", re.I)
+# A per-second price says so in one of these words.
+_PER_SECOND = re.compile(r"per (?:video )?second", re.I)
 
 # GPT Image 2.5 (`marketing-studio/image/flare` and `/sunburst`) answers its
 # estimate with per-1M-token rates and no amount, and no job status says what
@@ -156,6 +162,18 @@ def _video_input(params: Dict[str, Any]) -> bool:
     return False
 
 
+def _hdr(params: Dict[str, Any]) -> bool:
+    """Whether the body asks for HDR: a key naming it set to a true value, or a value
+    `hdr` (e.g. a dynamic-range enum). Unknown shapes count as asking — refusing a
+    price is safer than understating it."""
+    for key, value in params.items():
+        if isinstance(value, str) and value.strip().lower() == "hdr":
+            return True
+        if "hdr" in key.lower() and value not in (None, False, 0, "", "off", "sdr", "false"):
+            return True
+    return False
+
+
 def _gpt_image_combination(key: tuple) -> str:
     shape, quality, resolution = key
     return f"{shape} {quality} {resolution or '(no resolution)'}"
@@ -223,20 +241,30 @@ def price_of(estimate: Any, params: Dict[str, Any]) -> Dict[str, Any]:
         return gpt_image
     # The rates are in the first sentence; later ones price video tokens at the
     # same resolutions ("$0.0214 at 480p or 720p") and must not replace them.
+    first = re.split(r"\.\s", sentence, maxsplit=1)[0]
     rates: Dict[str, float] = {}
-    for rate, res in _RATE.findall(re.split(r"\.\s", sentence, maxsplit=1)[0]):
-        rates.setdefault(res, float(rate))
+    for rate, res in _RATE.findall(first):
+        rates.setdefault(res.lower(), float(rate))
+    for res, rate in _RATE_RES_FIRST.findall(first):
+        rates.setdefault(res.lower(), float(rate))
     if not rates:
         return {"usd": None, "approximate": False, "basis": "the price sentence names no rate by resolution"}
     if "without video input" in sentence and _video_input(params):
         return {"usd": None, "approximate": False,
                 "basis": "the sentence prices a job without video input, and this one has a video"}
-    per_second = "per second" in sentence
+    if re.search(r"\bHDR adds\b", sentence) and _hdr(params):
+        # The first sentence is the SDR rate; HDR adds a surcharge priced elsewhere.
+        # Reading the SDR rate alone would understate the job against its spend cap.
+        return {"usd": None, "approximate": False,
+                "basis": "the sentence prices SDR, and this job asks for HDR (surcharge not read)"}
+    per_second = bool(_PER_SECOND.search(sentence))
     duration = params.get("duration")
     if per_second and (isinstance(duration, bool) or not isinstance(duration, (int, float)) or duration <= 0):
         return {"usd": None, "approximate": False,
                 "basis": "the price is per second and `duration` is not given as a number of seconds"}
     resolution = params.get("resolution")
+    if isinstance(resolution, str):
+        resolution = resolution.strip().lower()
     if resolution is not None and resolution not in rates:
         return {"usd": None, "approximate": False,
                 "basis": f"no rate for resolution {resolution!r} (the sentence names {', '.join(rates)})"}

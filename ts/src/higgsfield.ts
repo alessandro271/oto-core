@@ -150,7 +150,7 @@ export const connector = defineConnector({
   name: "higgsfield",
   label: "Higgsfield",
   namespace: "higgsfield",
-  version: "1.1.1",
+  version: "1.1.2",
   apiVersion: "2.0.0",
   baseUrl: "https://api.higgsfield.ai",
   auth: {"kind": "api_key", "in": "header", "name": "Authorization", "prefix": "Key ", "key": "api_key"},
