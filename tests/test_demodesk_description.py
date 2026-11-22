@@ -172,3 +172,15 @@ def test_a_rate_limit_is_retried_then_refused(demodesk):
 def test_an_empty_transcript_is_an_empty_answer(demodesk):
     result, _ = play(demodesk, "get_transcript", {"token": TOKEN}, answer(204), credential={"api_key": KEY})
     assert result == {}
+
+
+def test_users_and_meetings_lists_keep_only_what_an_assistant_reads(demodesk):
+    user = {"id": "u1", "firstName": "A", "lastName": "B", "email": "a@example.test", "role": "admin",
+            "locale": "en", "timeZone": "UTC", "avatarUrl": "https://example.test/a.png"}
+    result, _ = _one(demodesk, "list_users", {}, {"data": [user], "meta": {"hasNext": False}})
+    assert result["items"] == [{k: user[k] for k in ("id", "firstName", "lastName", "email", "role")}]
+    meeting = {"demoId": "1", "name": "Call", "status": "ended", "host": {"userId": "u1", "displayName": "A",
+               "email": "a@example.test"}, "startDate": "2026-11-01T10:00:00Z", "endDate": "2026-11-01T11:00:00Z",
+               "access": "company_wide", "recordingTokens": ["t1"], "internalNotes": "x", "agenda": "y"}
+    result, _ = _one(demodesk, "list_meetings", {}, {"data": [meeting], "meta": {"hasNext": False}})
+    assert result["items"] == [{k: v for k, v in meeting.items() if k not in ("internalNotes", "agenda")}]
