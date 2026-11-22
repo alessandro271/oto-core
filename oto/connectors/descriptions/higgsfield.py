@@ -3,7 +3,7 @@
 DESCRIPTION = {'connector': {'name': 'higgsfield',
                'label': 'Higgsfield',
                'namespace': 'higgsfield',
-               'version': '1.1.1',
+               'version': '1.1.2',
                'api_version': '2.0.0',
                'base_url': 'https://api.higgsfield.ai',
                'auth': {'kind': 'api_key',
