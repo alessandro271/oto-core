@@ -23,13 +23,17 @@ cookie; an optional one is left out, and said so), `openapi_ref_external`, `open
 raises `OpenAPIRefused` (`openapi_not_a_document`, `openapi_too_large`).
 
 `read_url(url)` reads a document by its address: https towards a public host, no redirect followed, 5 MB at most.
+
+The host profile (`host.from_host_openapi`) reads the same operations by the same walk (`walk`, `parts`), and builds
+its own functions from them.
 """
 
 from __future__ import annotations
 
 import json
 import re
-from typing import Any, Optional
+from dataclasses import dataclass, field
+from typing import Any, Callable, Optional
 
 import requests
 import yaml
@@ -147,6 +151,17 @@ def _parameter_schema(document: dict, parameter: dict, swagger: bool) -> dict:
     return schema
 
 
+def _merged(parts: list) -> dict:
+    """An `allOf` body as one object: the properties and requirements of its parts; closed when each part is."""
+    merged: dict = {"type": "object", "properties": {}, "required": []}
+    for part in parts:
+        merged["properties"].update(part.get("properties") or {})
+        merged["required"] += part.get("required") or []
+    if parts and all(part.get("additionalProperties") is False for part in parts):
+        merged["additionalProperties"] = False
+    return merged
+
+
 def _body(document: dict, operation: dict, parameters: list[dict], swagger: bool) -> tuple[Optional[dict], Any]:
     """The JSON object schema of the body and its example, `(None, None)` without a body; `_Skip` otherwise."""
     holder: Any = None
@@ -170,11 +185,7 @@ def _body(document: dict, operation: dict, parameters: list[dict], swagger: bool
     raw = schema or {}
     schema = inline(document, raw)
     if schema.get("allOf"):
-        merged: dict = {"type": "object", "properties": {}, "required": []}
-        for part in schema["allOf"]:
-            merged["properties"].update(part.get("properties") or {})
-            merged["required"] += part.get("required") or []
-        schema = merged
+        schema = _merged(schema["allOf"])
     if (
         schema.get("type", "object") != "object"
         or not isinstance(schema.get("properties"), dict)
@@ -196,7 +207,28 @@ def _property_examples(document: dict, schema: Any) -> Optional[dict]:
     return out or None
 
 
-def _candidate(document: dict, path: str, method: str, item: dict, operation: dict) -> dict:
+@dataclass
+class Parts:
+    """What an operation gives, before a profile names it: its path (each `{argument}` renamed), its arguments (JSON
+    Schema of each, required ones, places in `call`), the document's example by argument, what was deduced, each API
+    name with its argument, the JSON body's schema (`None` without one), and the query parameters left out by name."""
+
+    path: str
+    method: str
+    operation: dict
+    properties: dict
+    required: list
+    places: dict
+    example: dict
+    deduced: list
+    arguments: dict = field(default_factory=dict)
+    body: Optional[dict] = None
+    left_out: dict = field(default_factory=dict)
+
+
+def parts(document: dict, path: str, method: str, item: dict, operation: dict, leave_out: tuple = ()) -> Parts:
+    """The parts of an operation (`Parts`); the query parameters named in `leave_out` are not arguments, and are
+    returned apart. `_Skip` or `RefRefused` when the format cannot say the operation."""
     swagger = "swagger" in document
     deduced: list[dict] = []
     properties: dict = {}
@@ -204,12 +236,15 @@ def _candidate(document: dict, path: str, method: str, item: dict, operation: di
     places: dict[str, dict] = {"query": {}, "headers": {}, "body": {}}
     renamed: dict[str, str] = {}
     example: dict = {}
+    arguments: dict[str, str] = {}
+    left_out: dict[str, dict] = {}
 
     def argument(api_name: str, schema: dict, is_required: bool) -> str:
         name = identifier(api_name, "arg")
         if name in properties:
             raise _Skip(p.ARGUMENT_NAME_COLLISION, f"two arguments become {name!r}")
         properties[name] = schema
+        arguments[api_name] = name
         if is_required:
             required.append(name)
         return name
@@ -231,6 +266,9 @@ def _candidate(document: dict, path: str, method: str, item: dict, operation: di
             continue
         if where not in ("path", "query", "header"):
             raise _Skip(p.SCHEMA_INVALID, f"the parameter {api_name!r} is in {where!r}")
+        if where == "query" and api_name in leave_out:
+            left_out[api_name] = parameter
+            continue
         name = argument(
             api_name,
             _parameter_schema(document, parameter, swagger),
@@ -262,20 +300,24 @@ def _candidate(document: dict, path: str, method: str, item: dict, operation: di
             )
     for api_name, name in renamed.items():
         path = path.replace("{" + api_name + "}", "{" + name + "}")
-    return _function(document, path, method, operation, properties, required, places, example, deduced)
+    return Parts(path, method, operation, properties, required, places, example, deduced, arguments, body, left_out)
 
 
 def _placeholders(path: str) -> list[str]:
     return PLACEHOLDER.findall(path)
 
 
-def _function(document, path, method, operation, properties, required, places, example, deduced) -> dict:
+def _candidate(document: dict, path: str, method: str, item: dict, operation: dict) -> dict:
+    """A candidate of the Custom API import: its function named and classed from the document, its problems."""
+    found = parts(document, path, method, item, operation)
+    path, operation, properties, required = found.path, found.operation, found.properties, found.required
+    places, example, deduced = found.places, found.example, found.deduced
     problems: list[Problem] = []
     if isinstance(operation.get("operationId"), str) and operation["operationId"].strip():
         name = identifier(operation["operationId"], "op")
     else:
-        parts = [part for part in path.split("/") if part and not part.startswith("{")]
-        name = identifier(f"{method}_{'_'.join(parts) or 'root'}", "op")
+        segments = [part for part in path.split("/") if part and not part.startswith("{")]
+        name = identifier(f"{method}_{'_'.join(segments) or 'root'}", "op")
         deduced.append({"path": "name", "value": name, "why": "the operation has no operationId"})
     texts = [
         t.strip() for t in (operation.get("summary"), operation.get("description")) if isinstance(t, str) and t.strip()
@@ -312,13 +354,12 @@ def _examples(schema: dict, example: dict, deduced: list[dict], problems: list[P
     return []
 
 
-def from_openapi(document: Any) -> dict:
-    """Candidates for a Custom API definition (module docstring)."""
-    document = parse(document)
-    connector, connector_deduced, connector_problems = propose(document)
-    candidates: list[dict] = []
+def walk(document: dict, build: Callable[[str, str, dict, dict], Any]) -> tuple[list, list[dict]]:
+    """`build(path, method, item, operation)` applied to each operation of the document, `MAX_FUNCTIONS` at most, in the
+    document's order: what it built, and the operations skipped, each `{path, method, code, reason}` (`method` is `*`
+    for a whole path)."""
+    built: list = []
     skipped: list[dict] = []
-    names: set[str] = set()
     for path, node in (document.get("paths") or {}).items():
         try:
             item, _ = resolve(document, node)
@@ -332,25 +373,35 @@ def from_openapi(document: Any) -> dict:
             if method not in METHODS:
                 skipped.append({**entry, "code": METHOD_NOT_SUPPORTED, "reason": f"{method.upper()} is not supported"})
                 continue
-            if len(candidates) >= MAX_FUNCTIONS:
+            if len(built) >= MAX_FUNCTIONS:
                 skipped.append({**entry, "code": TOO_MANY_OPERATIONS, "reason": f"beyond {MAX_FUNCTIONS} operations"})
                 continue
             try:
-                candidate = _candidate(document, path, method, item, operation if isinstance(operation, dict) else {})
+                built.append(build(path, method, item, operation if isinstance(operation, dict) else {}))
             except (_Skip, RefRefused) as refused:
                 skipped.append({**entry, "code": refused.code, "reason": refused.reason})
-                continue
-            function = candidate["function"]
-            if function["name"] in names:
-                base, n = function["name"], 2
-                while f"{base[:58]}_{n}" in names:
-                    n += 1
-                function["name"] = f"{base[:58]}_{n}"
-                candidate["problems"].append(
-                    Problem(NAME_COLLISION, "name", f"{base!r} is taken: {function['name']!r} is proposed, to confirm")
-                )
-            names.add(function["name"])
-            candidates.append(candidate)
+    return built, skipped
+
+
+def from_openapi(document: Any) -> dict:
+    """Candidates for a Custom API definition (module docstring)."""
+    document = parse(document)
+    connector, connector_deduced, connector_problems = propose(document)
+    candidates, skipped = walk(
+        document, lambda path, method, item, operation: _candidate(document, path, method, item, operation)
+    )
+    names: set[str] = set()
+    for candidate in candidates:
+        function = candidate["function"]
+        if function["name"] in names:
+            base, n = function["name"], 2
+            while f"{base[:58]}_{n}" in names:
+                n += 1
+            function["name"] = f"{base[:58]}_{n}"
+            candidate["problems"].append(
+                Problem(NAME_COLLISION, "name", f"{base!r} is taken: {function['name']!r} is proposed, to confirm")
+            )
+        names.add(function["name"])
     return {
         "connector": connector,
         "deduced": connector_deduced,

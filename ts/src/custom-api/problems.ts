@@ -1,5 +1,6 @@
 // Un problème d'une définition Custom API : son code, sa place, son message. Les mêmes codes que le paquet Python
-// (`oto/connectors/custom_api/problems.py`), sauf ceux de la reprise d'oto 1, qui n'existe qu'en Python.
+// (`oto/connectors/custom_api/problems.py`), sauf ceux de la reprise d'oto 1, qui n'existe qu'en Python. L'import OpenAPI
+// et le profil hôte rendent des problèmes de même forme, sous leurs propres codes (`openapi_*`, `host_*`).
 
 export const KEY_NOT_ALLOWED = "custom_api_key_not_allowed"
 export const AUTH_NOT_SUPPORTED = "custom_api_auth_not_supported"
@@ -13,6 +14,9 @@ export const EXAMPLE_INVALID = "custom_api_example_invalid"
 export const SCHEMA_INVALID = "custom_api_schema_invalid"
 /** Une règle du format que le schéma ne sait pas dire ; `Problem.rule` la nomme quand elle a un code. */
 export const RULE_BROKEN = "custom_api_rule_broken"
+
+/** Python : la reprise d'oto 1, et l'import OpenAPI, quand deux arguments d'une opération ont le même nom. */
+export const ARGUMENT_NAME_COLLISION = "custom_api_argument_name_collision"
 
 /** Les codes que rend `validate`. */
 export const CODES = [
@@ -35,7 +39,12 @@ export type ProblemCode = (typeof CODES)[number]
  * `path` : à points, un indice de liste en nombre (`functions.0.examples`), vide pour le document entier. `rule` : le code
  * de la règle du format enfreinte, pour `custom_api_rule_broken` (`body_key_twice`), quand elle en a un.
  */
-export type Problem = { readonly code: ProblemCode; readonly path: string; readonly message: string; readonly rule?: string }
+export type Problem<C extends string = ProblemCode> = {
+  readonly code: C
+  readonly path: string
+  readonly message: string
+  readonly rule?: string
+}
 
 export type PathPart = string | number
 
@@ -44,12 +53,12 @@ export function dotted(parts: readonly PathPart[]): string {
   return parts.map(String).join(".")
 }
 
-export function problem(code: ProblemCode, path: string, message: string, rule?: string): Problem {
+export function problem<C extends string>(code: C, path: string, message: string, rule?: string): Problem<C> {
   return rule === undefined ? { code, path, message } : { code, path, message, rule }
 }
 
 /** Les problèmes dans leur ordre, chaque `(code, path, message)` une fois. */
-export function unique(problems: readonly Problem[]): Problem[] {
+export function unique<C extends string>(problems: readonly Problem<C>[]): Problem<C>[] {
   const seen = new Set<string>()
   return problems.filter((p) => {
     const key = JSON.stringify([p.code, p.path, p.message])
