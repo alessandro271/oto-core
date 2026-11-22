@@ -11,6 +11,8 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 5. `auth.kind: none` : sans clé ;
 6. sinon (`api_key`, `bearer`, `basic`) : clé.
 
+Un connecteur à plusieurs accès (`accesses`) a le type de chacun, et compte dans « Par type » pour chacun.
+
 « Clé de la plateforme » : `modes` contient `platform`. Fonctions : par `class` (lecture, écriture, sensible). Sonde : `probe`, et son solde `probe.balance`. Avec coût : les fonctions qui portent `cost`. Niveaux d'accès : `auth.access_levels`. Non générées : les fonctions que la fabrique saute, nommées par `python -m fabrique`.
 
 | connecteur | libellé | version | type | clé de la plateforme | fonctions | lecture | écriture | sensible | sonde | avec coût | niveaux d'accès | non générées |
@@ -18,37 +20,39 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 | `affinity` | Affinity | 1.0.0 | clé | non | 33 | 24 | 7 | 2 | non | 0 | non | 0 |
 | `aircall` | Aircall | 1.1.0 | clé | non | 20 | 20 | 0 | 0 | non | 20 | non | 0 |
 | `allo` | Allo | 1.2.0 | clé | non | 95 | 40 | 41 | 14 | oui | 1 | non | 0 |
+| `alma` | Alma | 1.0.0 | clé | non | 3 | 3 | 0 | 0 | oui | 3 | non | 0 |
 | `amplemarket` | Amplemarket | 1.0.0 | clé | non | 48 | 28 | 15 | 5 | oui | 48 | non | 0 |
 | `amplitude` | Amplitude | 1.2.0 | clé | non | 16 | 16 | 0 | 0 | non | 0 | non | 0 |
 | `apollo` | Apollo.io | 1.1.1 | clé | non | 30 | 16 | 10 | 4 | non | 30 | non | 0 |
 | `attio` | Attio | 1.3.0 | clé | non | 47 | 28 | 11 | 8 | oui | 47 | non | 0 |
 | `brevo` | Brevo | 1.0.0 | clé | non | 60 | 36 | 16 | 8 | oui | 60 | non | 0 |
 | `claap` | Claap | 1.0.1 | clé | non | 6 | 5 | 0 | 1 | non | 6 | non | 0 |
-| `crisp` | Crisp | 1.0.0 | clé | non | 20 | 20 | 0 | 0 | oui | 20 | non | 0 |
+| `crisp` | Crisp | 1.1.0 | clé | non | 28 | 20 | 5 | 3 | oui | 28 | non | 0 |
 | `dataforseo` | DataForSEO | 1.0.4 | clé | oui | 62 | 59 | 3 | 0 | oui, avec solde | 50 | non | 0 |
 | `demodesk` | Demodesk | 1.0.0 | clé | non | 9 | 9 | 0 | 0 | oui | 0 | non | 0 |
 | `dropcontact` | Dropcontact | 1.0.0 | clé | oui | 3 | 2 | 1 | 0 | oui, avec solde | 1 | non | 0 |
 | `elevenlabs` | ElevenLabs | 1.0.1 | clé | non | 4 | 4 | 0 | 0 | oui | 4 | non | 0 |
-| `fod` | France Open Data | 1.4.0 | clé | oui | 30 | 30 | 0 | 0 | oui | 30 | non | 0 |
+| `fillout` | Fillout | 1.0.0 | clé | non | 8 | 4 | 1 | 3 | oui | 8 | non | 0 |
+| `fod` | France Open Data | 1.7.0 | clé | oui | 43 | 43 | 0 | 0 | oui | 43 | non | 0 |
 | `folk` | folk | 1.0.1 | clé | non | 62 | 23 | 21 | 18 | oui | 62 | non | 0 |
 | `fullenrich` | FullEnrich | 1.0.0 | clé | oui | 2 | 1 | 1 | 0 | non | 1 | non | 0 |
-| `gmail` | Gmail | 1.0.1 | connexion d'une personne (OAuth) | non | 13 | 8 | 2 | 3 | non | 13 | oui | 0 |
+| `gmail` | Gmail | 1.1.0 | connexion d'une personne (OAuth) | non | 13 | 8 | 2 | 3 | non | 13 | oui | 0 |
 | `google_calendar` | Google Calendar | 1.0.0 | connexion d'une personne (OAuth) | non | 7 | 4 | 0 | 3 | non | 7 | oui | 0 |
 | `google_drive` | Google Drive | 1.0.0 | connexion d'une personne (OAuth) | non | 12 | 5 | 4 | 3 | non | 12 | oui | 0 |
-| `google_search_console` | Google Search Console | 1.1.0 | compte de service (assertion signée) | non | 6 | 5 | 1 | 0 | oui | 6 | oui | 0 |
-| `google_sheets` | Google Sheets | 1.0.0 | connexion d'une personne (OAuth) | non | 5 | 2 | 2 | 1 | non | 5 | oui | 0 |
+| `google_search_console` | Google Search Console | 2.0.0 | compte de service (assertion signée) ou connexion d'une personne (OAuth) | non | 6 | 5 | 1 | 0 | oui | 6 | oui | 0 |
+| `google_sheets` | Google Sheets | 1.0.1 | connexion d'une personne (OAuth) | non | 5 | 2 | 2 | 1 | non | 5 | oui | 0 |
 | `granola` | Granola | 1.0.0 | clé | non | 8 | 5 | 2 | 1 | oui | 8 | non | 0 |
 | `heyreach` | HeyReach | 1.0.1 | clé | non | 32 | 20 | 4 | 8 | oui | 0 | non | 0 |
-| `higgsfield` | Higgsfield | 1.1.0 | clé | non | 5 | 2 | 2 | 1 | oui | 5 | non | 0 |
+| `higgsfield` | Higgsfield | 1.1.1 | clé | non | 5 | 2 | 2 | 1 | oui | 5 | non | 0 |
 | `hubspot` | HubSpot | 1.0.2 | clé | non | 25 | 13 | 7 | 5 | non | 25 | non | 0 |
 | `hunter` | Hunter.io | 1.0.0 | clé | oui | 4 | 1 | 3 | 0 | oui, avec solde | 3 | non | 0 |
 | `instantly` | Instantly | 1.0.1 | clé | non | 34 | 21 | 5 | 8 | oui | 0 | non | 0 |
 | `jefacture` | jefacture.com | 1.0.0 | connexion d'une personne (OAuth) | non | 11 | 11 | 0 | 0 | non | 11 | non | 0 |
 | `klaviyo` | Klaviyo | 1.0.0 | clé | non | 25 | 19 | 2 | 4 | oui | 25 | non | 0 |
-| `lemlist` | lemlist | 1.5.0 | clé | non | 128 | 58 | 34 | 36 | oui | 128 | non | 0 |
+| `lemlist` | lemlist | 1.6.1 | clé | non | 127 | 57 | 34 | 36 | oui | 127 | non | 0 |
 | `linear` | Linear | 1.0.0 | clé | non | 27 | 12 | 9 | 6 | oui | 0 | non | 0 |
 | `linkedin_unipile` | LinkedIn (Unipile) | 1.3.2 | clé de l'hôte | oui | 28 | 24 | 1 | 3 | oui | 0 | non | 0 |
-| `mailpool` | Mailpool | 1.1.1 | clé | non | 21 | 16 | 5 | 0 | non | 21 | non | 0 |
+| `mailpool` | Mailpool | 1.2.0 | clé | non | 22 | 16 | 6 | 0 | non | 22 | non | 0 |
 | `malibou` | Malibou | 1.0.0 | clé | non | 4 | 4 | 0 | 0 | oui | 4 | non | 0 |
 | `meta_ads` | Meta Ads | 1.1.0 | clé | non | 8 | 8 | 0 | 0 | non | 0 | non | 0 |
 | `microsoft` | Microsoft 365 (SharePoint, OneDrive) | 3.2.0 | connexion d'une personne (OAuth) | non | 13 | 13 | 0 | 0 | non | 13 | oui | 0 |
@@ -76,15 +80,15 @@ Une ligne par connecteur décrit, par ordre alphabétique. Le type se déduit de
 | `typeform` | Typeform | 1.2.0 | clé | non | 12 | 6 | 1 | 5 | non | 12 | non | 0 |
 | `wttj_ats` | Welcome to the Jungle ATS | 1.0.0 | clé | non | 10 | 7 | 3 | 0 | non | 0 | non | 0 |
 | `yousign` | Yousign | 1.1.1 | clé | non | 13 | 5 | 7 | 1 | oui | 0 | non | 0 |
-| **total : 61** |  |  |  |  | 1465 | 919 | 338 | 208 |  | 976 |  | 0 |
+| **total : 63** |  |  |  |  | 1497 | 938 | 345 | 214 |  | 1008 |  | 0 |
 
 ## Par type
 
 | type | connecteurs | fonctions |
 | --- | ---: | ---: |
-| connexion d'une personne (OAuth) | 7 | 67 |
+| connexion d'une personne (OAuth) | 8 | 73 |
 | application du client (OAuth entre machines) | 3 | 10 |
 | compte de service (assertion signée) | 1 | 6 |
 | clé de l'hôte | 2 | 29 |
 | sans clé | 0 | 0 |
-| clé | 48 | 1353 |
+| clé | 50 | 1385 |

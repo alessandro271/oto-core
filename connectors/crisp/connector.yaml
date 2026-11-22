@@ -3,8 +3,40 @@
 # Authentication: https://docs.crisp.chat/guides/rest-api/authentication/
 # Rate limits: https://docs.crisp.chat/guides/rest-api/rate-limits/
 #
-# Read only: every function is a GET. Nothing sends a message or a note,
-# changes a conversation state, or edits a contact or an article.
+# Reads (GET) and, since 1.1.0, a few writes on conversations and contacts:
+# an internal note, the state of a conversation, the contact details a
+# conversation carries, a contact's profile and custom data, the segments of a
+# conversation or of a contact, and a text message sent to the contact. Nothing
+# deletes, nothing touches the knowledge base, nothing moves a conversation to
+# another inbox. Every write acts on real conversations of real people.
+#
+# What the reference says about the writes (read 2026-11-21):
+#
+# - A message: POST /conversation/{session_id}/message, {type, from, origin,
+#   content}. A note is type note (the team sees it, the contact does not); a
+#   text is type text and reaches the contact. Both are sent here from
+#   operator with origin chat, as in the reference's examples; the reference
+#   does not say how an operator message reaches the conversation's channel
+#   (WhatsApp, Instagram...) nor whether origin must name that channel. The
+#   answer is 202 {data: {fingerprint}}; 406 (message_rule_spammy or
+#   message_rule_blocked) and 409 (too_many_messages) refuse a message.
+# - Messaging window of a channel (WhatsApp's 24 hours): the reference says
+#   nothing, neither a refusal code nor a template to use when it is closed.
+#   It documents no WhatsApp template at all (only campaign templates, which
+#   are email campaigns).
+# - State: PATCH /conversation/{session_id}/state, {state: pending,
+#   unresolved or resolved}.
+# - Contact details of a conversation: PATCH /conversation/{session_id}/meta
+#   (nickname, email, phone, address, segments...). Contact profile: PATCH
+#   /people/profile/{people_id}, which "saves only changed fields" (email,
+#   person {nickname, phone, address...}, segments). Custom data: PATCH
+#   /people/data/{people_id} "merges the new data keys with already-set data"
+#   (PUT, which replaces, is not used).
+# - Segments: both PATCH routes take segments as a list; the reference does
+#   not say whether the list given replaces the current one or is added to
+#   it. set_conversation_segments and set_person_segments send the WHOLE list,
+#   and are declared as replacing it (sensitive, destroy): a caller that adds
+#   or removes one segment reads the current list first and sends the result.
 #
 # Account. A website token is a keypair (identifier and key) that a workspace
 # owner generates in Settings > Workspace Settings > Advanced configuration
@@ -67,7 +99,7 @@ connector:
   name: crisp
   label: Crisp
   namespace: crisp
-  version: 1.0.0
+  version: 1.1.0
   api_version: REST API V1
   base_url: https://api.crisp.chat/v1/website/{website_id}
   auth:
@@ -615,4 +647,232 @@ functions:
     refusals:
       - *helpdesk_not_found
     call: { method: GET, path: "/helpdesk/tree/metadata/{locale}/{content_type}/{tree_path}" }
+    cost: { per: request }
+
+  # --- Writing: conversations -------------------------------------------------
+
+  - name: add_conversation_note
+    class: write
+    description: >-
+      Post an internal note in one Crisp conversation: a message of type note,
+      from the team, that the team sees in the conversation and the contact
+      never receives. It stays in the conversation's history (nothing here
+      deletes it). Answers {error, reason, data: {fingerprint}}. The
+      conversation is a real one: write only what the task needs.
+    input:
+      type: object
+      additionalProperties: false
+      required: [session_id, content]
+      properties:
+        session_id: *session_id
+        content: &message_content { type: string, minLength: 1, personal: true, description: "The text." }
+    examples:
+      - title: A note for the team
+        input: { session_id: "session_700c65e1-85e2-465a-b9ac-ecb5ec2c9881", content: "Called back, waiting for the documents." }
+    refusals:
+      - *conversation_not_found
+    call:
+      method: POST
+      path: "/conversation/{session_id}/message"
+      body: { content: content }
+      constants: { body: { type: note, from: operator, origin: chat } }
+    cost: { per: request }
+
+  - name: change_conversation_state
+    class: write
+    description: >-
+      Change the state of one Crisp conversation: pending, unresolved or
+      resolved (the team sees it; the reference does not say that the contact
+      is told). Answers {error, reason, data: {}}.
+    input:
+      type: object
+      additionalProperties: false
+      required: [session_id, state]
+      properties:
+        session_id: *session_id
+        state: { type: string, enum: [pending, unresolved, resolved] }
+    examples:
+      - title: Resolve a conversation
+        input: { session_id: "session_700c65e1-85e2-465a-b9ac-ecb5ec2c9881", state: resolved }
+    refusals:
+      - *conversation_not_found
+    call:
+      method: PATCH
+      path: "/conversation/{session_id}/state"
+      body: { state: state }
+    cost: { per: request }
+
+  - name: update_conversation_meta
+    class: write
+    description: >-
+      Change the contact details one Crisp conversation carries (its meta):
+      nickname, email, phone, address. Only the fields given are sent. The
+      contact profile is a separate record: see update_person. Answers {error,
+      reason, data: {}}.
+    input:
+      type: object
+      additionalProperties: false
+      required: [session_id]
+      minProperties: 2
+      properties:
+        session_id: *session_id
+        nickname: &nickname { type: string, minLength: 1, personal: true, description: "First and last name." }
+        email: &email { type: string, minLength: 3, personal: true }
+        phone: &phone { type: string, minLength: 1, personal: true, description: "Phone number, international format (+33...)." }
+        address: &address { type: string, minLength: 1, personal: true }
+    examples:
+      - title: The email of a conversation's contact
+        input: { session_id: "session_700c65e1-85e2-465a-b9ac-ecb5ec2c9881", email: "jane.doe@example.test" }
+    refusals:
+      - *conversation_not_found
+    call:
+      method: PATCH
+      path: "/conversation/{session_id}/meta"
+      body: { nickname: nickname, email: email, phone: phone, address: address }
+    cost: { per: request }
+
+  - name: set_conversation_segments
+    class: sensitive
+    effect: destroy
+    description: >-
+      Set the segments (tags) of one Crisp conversation to the list given: it
+      is sent whole, and a segment that is not in it may be lost. To add or
+      remove one segment, read the current list (get_conversation_meta,
+      data.segments) and send it changed. Answers {error, reason, data: {}}.
+    input:
+      type: object
+      additionalProperties: false
+      required: [session_id, segments]
+      properties:
+        session_id: *session_id
+        segments: &segments { type: array, uniqueItems: true, maxItems: 100, items: { type: string, minLength: 1, maxLength: 100 }, description: "The whole list of segments." }
+    examples:
+      - title: Two segments on a conversation
+        input: { session_id: "session_700c65e1-85e2-465a-b9ac-ecb5ec2c9881", segments: [callback, documents] }
+    refusals:
+      - *conversation_not_found
+    call:
+      method: PATCH
+      path: "/conversation/{session_id}/meta"
+      body: { segments: segments }
+    confirm:
+      summary: "Set the segments of Crisp conversation {session_id} to the list given: a segment not in the list may be removed."
+    cost: { per: request }
+
+  - name: send_message
+    class: sensitive
+    effect: send
+    description: >-
+      Send a text message to the contact of one Crisp conversation, from the
+      team (type text, from operator, origin chat). It reaches a real person and
+      cannot be taken back. The reference does not say how the message reaches
+      the conversation's channel, nor what happens when a channel's messaging
+      window (such as WhatsApp's 24 hours) is closed. Answers 202 {error,
+      reason, data: {fingerprint}}.
+    input:
+      type: object
+      additionalProperties: false
+      required: [session_id, content]
+      properties:
+        session_id: *session_id
+        content: *message_content
+    examples:
+      - title: A reply to the contact
+        input: { session_id: "session_700c65e1-85e2-465a-b9ac-ecb5ec2c9881", content: "Your appointment is confirmed for Tuesday at 10am." }
+    refusals:
+      - *conversation_not_found
+      - { code: message_refused, when: 406, message: "Crisp refused the message under a messaging rule (spam or blocked): nothing was sent." }
+      - { code: too_many_messages, when: 409, message: "Crisp refused the message: too many messages in this conversation; nothing was sent." }
+    call:
+      method: POST
+      path: "/conversation/{session_id}/message"
+      body: { content: content }
+      constants: { body: { type: text, from: operator, origin: chat } }
+    confirm:
+      summary: "Send this text to the contact of Crisp conversation {session_id}: it reaches a real person and cannot be taken back."
+    cost: { per: request }
+
+  # --- Writing: contacts --------------------------------------------------------
+
+  - name: update_person
+    class: write
+    description: >-
+      Change one contact (people profile) of the Crisp workspace: its email,
+      and its nickname, phone and address. Only the fields given are sent; Crisp
+      keeps the others. 409 when the email is another contact's. Answers
+      {error, reason, data: {}}.
+    input:
+      type: object
+      additionalProperties: false
+      required: [people_id]
+      minProperties: 2
+      properties:
+        people_id: *people_id
+        email: *email
+        nickname: *nickname
+        phone: *phone
+        address: *address
+    examples:
+      - title: The phone of a contact
+        input: { people_id: "c4b4ab32-4c4d-4b6f-9d8a-1f2e3d4c5b6a", phone: "+33612345678" }
+    refusals:
+      - *person_not_found
+      - { code: email_taken, when: 409, message: "Another contact of this Crisp workspace already has this email." }
+    call:
+      method: PATCH
+      path: "/people/profile/{people_id}"
+      body: { email: email, person: { nickname: nickname, phone: phone, address: address } }
+    cost: { per: request }
+
+  - name: update_person_data
+    class: write
+    description: >-
+      Change the custom data of one contact of the Crisp workspace: the keys
+      given are merged with the data already set (a key given replaces its
+      value, the other keys stay). Values are texts, numbers or booleans.
+      Answers {error, reason, data: {}}.
+    input:
+      type: object
+      additionalProperties: false
+      required: [people_id, data]
+      properties:
+        people_id: *people_id
+        data: { type: object, minProperties: 1, additionalProperties: { type: [string, number, boolean], personal: true }, description: "Keys and values to set." }
+    examples:
+      - title: One custom data key of a contact
+        input: { people_id: "c4b4ab32-4c4d-4b6f-9d8a-1f2e3d4c5b6a", data: { followup: "to call back" } }
+    refusals:
+      - *person_not_found
+    call:
+      method: PATCH
+      path: "/people/data/{people_id}"
+      body: { data: data }
+    cost: { per: request }
+
+  - name: set_person_segments
+    class: sensitive
+    effect: destroy
+    description: >-
+      Set the segments (tags) of one contact of the Crisp workspace to the list
+      given: it is sent whole, and a segment that is not in it may be lost. To
+      add or remove one segment, read the current list (get_person,
+      data.segments) and send it changed. Answers {error, reason, data: {}}.
+    input:
+      type: object
+      additionalProperties: false
+      required: [people_id, segments]
+      properties:
+        people_id: *people_id
+        segments: *segments
+    examples:
+      - title: Two segments on a contact
+        input: { people_id: "c4b4ab32-4c4d-4b6f-9d8a-1f2e3d4c5b6a", segments: [patient, followup] }
+    refusals:
+      - *person_not_found
+    call:
+      method: PATCH
+      path: "/people/profile/{people_id}"
+      body: { segments: segments }
+    confirm:
+      summary: "Set the segments of Crisp contact {people_id} to the list given: a segment not in the list may be removed."
     cost: { per: request }

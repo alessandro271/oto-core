@@ -1,7 +1,7 @@
 # Format de description d'un connecteur
 
 - **Statut** : validé par le mainteneur le 29/09/2026
-- **Dernière révision** : 2026-11-11
+- **Dernière révision** : 2026-11-19
 
 ## Résumé
 
@@ -34,13 +34,14 @@ Un connecteur partagé se décrit dans un fichier YAML, `connectors/<nom>/connec
 |---|---|
 | Ce document | Le fichier, le bloc `connector`, le bloc `functions` (classe, côté d'action, donnée personnelle, délai, pagination), le bloc `exposure`, les contrôles. |
 | [Sortie d'une fonction](sortie.md) | `output.items`, `strip`, `projection`, `sample`. |
-| [Compte](compte.md) | `auth`, `credential`, `settings`, gabarits d'adresse, `oauth2_user`, compte de service (`oauth2_jwt_bearer`), compte de l'hôte et compte rattaché. |
+| [Compte](compte.md) | `auth`, `credential`, `settings`, gabarits d'adresse, `oauth2_user`, compte de service (`oauth2_jwt_bearer`), plusieurs accès (`accesses`), compte de l'hôte et compte rattaché. |
 | [Niveaux d'accès](niveaux-d-acces.md) | `access_levels`, `scope_implies`, `default_level` (compte de service), `scopes` d'une fonction. |
 | [Corps d'une requête](corps-de-requete.md) | Corps en table, emboîté, entier, et ses clés libres. |
 | [Fichiers](fichiers.md) | `call.files` et `output.file`. |
 | [Erreurs et signal de refus](signal-de-refus.md) | `errors`, `refusals`, `marks_account`, `body`. |
 | [Coût et solde](cout-et-solde.md) | `cost`, `probe`, `probe.balance`. |
 | [Travaux longs](travaux-longs.md) | `async` et `background`. |
+| [Custom API](custom-api.md) | Le profil fermé du format pour la définition d'un outil par une organisation, l'import OpenAPI et la reprise d'oto 1. |
 
 ### Le fichier
 
@@ -55,25 +56,28 @@ Un connecteur partagé se décrit dans un fichier YAML, `connectors/<nom>/connec
 |---|---|---|
 | `name` | oui | Identifiant stable (`^[a-z][a-z0-9_]*$`), premier segment des outils. |
 | `label` | oui | Nom affiché. |
+| `description` | non | Ce que l'agent lit de l'outil entier, en anglais : 1 à 2 000 caractères, pas seulement des blancs. |
+| `logo_domain` | non | Domaine de l'outil, d'où un écran tire son logo : en minuscules, deux étiquettes au moins, la dernière en lettres, sans schéma, port, chemin ni point final (`example.com`). |
 | `namespace` | oui | Préfixe des outils exposés, souvent égal à `name`. |
 | `version` | oui | Version du connecteur, semver : elle monte avec tout commit qui change sa description ou son client (« Contrôles », ci-dessous). |
 | `api_version` | oui | Version de l'API tierce, telle que l'éditeur la nomme. |
 | `base_url` | sauf `base_urls` ou tout `handwritten` | Racine `https://` des chemins d'appel, sans `/` final ; gabarit possible sur les réglages. |
 | `base_urls` | non, exclusif de `base_url` | Une racine par valeur d'un réglage `choice` : `{ setting: region, values: { us: …, eu: … } }`. |
-| `auth` | oui | Mode d'authentification, voir [compte](compte.md). |
-| `credential` | sauf `none` et `oauth2_user` | Champs fournis par le consommateur : `name`, `label`, `secret` (booléen), `holder` (`account` par défaut, ou `host`) ; un seul, secret, en `oauth2_jwt_bearer` : voir [compte](compte.md). |
+| `auth` | sauf `accesses` | Mode d'authentification, voir [compte](compte.md). |
+| `accesses` | non, exclusif de `auth`, `credential` et `modes` | Plusieurs accès aux mêmes fonctions, au moins deux : `name`, `label`, `auth` (à niveaux d'accès), `credential`, `modes` ; voir [compte](compte.md), « Plusieurs accès ». |
+| `credential` | sauf `none`, `oauth2_user` et `accesses` | Champs fournis par le consommateur : `name`, `label`, `secret` (booléen), `holder` (`account` par défaut, ou `host`) ; un seul, secret, en `oauth2_jwt_bearer` : voir [compte](compte.md). |
 | `account_identity` | non | Identité d'un compte rattaché chez un tiers : `name`, `label`, `pattern` (expression ancrée), citée par `base_url` seulement, voir [compte](compte.md). |
 | `settings` | non | Réglages non secrets d'un compte, voir [compte](compte.md). |
-| `modes` | oui | Qui peut porter un compte : `platform`, `byo_user`, `byo_org`. |
+| `modes` | sauf `accesses` | Qui peut porter un compte : `platform`, `byo_user`, `byo_org`. |
 | `timeout_s` | non (30) | Délai d'un appel, en secondes, de 1 à 300 (le plafond qu'exécute le paquet d'oto 2) ; une fonction peut déclarer le sien. |
-| `quota` | non | Quota par défaut sur une clé de la plateforme ; n'existe que si `modes` contient `platform`. |
+| `quota` | non | Quota par défaut sur une clé de la plateforme ; n'existe que si `modes` contient `platform` (un seul accès). |
 | `query_arrays` | non | Encodage des listes en query : `repeat`, `brackets`, `comma`. |
 | `headers` | non | En-têtes constants de toute requête : `{ Notion-Version: "2025-09-03" }`. Jamais un secret ni l'en-tête d'authentification. |
 | `rate_limit` | non | Rythme maximal du tiers, par credential : `{ requests: 4, seconds: 1 }`. |
 | `probe` | non | Sonde de la connexion : `{ function: get_company, non_empty: [scopes] }`, une lecture sans argument requis, jamais décomptée d'un quota ; chaque chemin de `non_empty` doit être non vide dans sa réponse ; `balance`, le solde d'un compte payant ([coût et solde](cout-et-solde.md)). |
 | `errors` | oui | Table commune à toutes les fonctions : `status` (un ou plusieurs codes HTTP), `code` (refus nommé), `message` (anglais), `retryable`, et facultatifs `body` (condition sur le corps) et `marks_account` ([erreurs et signal de refus](signal-de-refus.md)) ; la première entrée qui s'applique l'emporte. |
 
-Les champs du compte (`auth`, `credential`, `settings`, `account_identity`, `base_urls`) sont dits dans [compte](compte.md).
+Les champs du compte (`auth`, `credential`, `accesses`, `settings`, `account_identity`, `base_urls`) sont dits dans [compte](compte.md).
 
 ### Le bloc `functions`
 
@@ -135,7 +139,7 @@ functions:
 
 ### Le bloc `exposure`
 
-L'exposition est une projection, pas une propriété de la fonction. `mode` vaut `per_action` (un outil `<namespace>_<name>` par fonction), `per_connector` (un outil par connecteur, l'action en paramètre) ou `via_call` (rien n'est exposé, le verbe d'appel lit le registre). Le défaut est `per_connector`, fixé par le consommateur ; `mode` le surcharge pour un connecteur, `tool` nomme l'outil unique en `per_connector`.
+L'exposition est une projection, pas une propriété de la fonction. `mode` vaut `per_action` (un outil `<namespace>_<name>` par fonction), `per_connector` (un outil par connecteur, l'action en paramètre) ou `via_call` (rien n'est exposé, le verbe d'appel lit le registre). Le défaut est `per_connector`, fixé par le consommateur ; `mode` le surcharge pour un connecteur, `tool` nomme l'outil unique en `per_connector`. Les modes côté hôte, et le regroupement par famille proposé pour un ERP : [exposition des fonctions](https://github.com/oto-now/oto-core/blob/main/docs/conception/exposition-des-fonctions.md) (oto-core).
 
 `exposure` et `modes` ne servent qu'à oto 1 : un hôte d'oto 2 sert ses fonctions par des outils fixes et dit qui fournit le compte par son propriétaire. Les deux blocs restent, marqués « oto 1 seulement », et partent quand oto 1 ne lira plus ce dépôt (décidé le 16/10).
 
@@ -145,7 +149,7 @@ L'exposition est une projection, pas une propriété de la fonction. `mode` vaut
 
 ### Contrôles
 
-`tests/test_connector_descriptions.py` vérifie que le schéma est un JSON Schema valide, que chaque description le respecte et porte le nom de son dossier, et que chaque exemple respecte l'entrée de sa fonction. Des variantes invalides du fichier Sellsy doivent être refusées : classe absente, clé inconnue, `call` et `handwritten` ensemble ou aucun des deux, fonction sensible sans `confirm`, entrée non stricte, aucun exemple, exemple hors bornes ou à argument inconnu, `embed` non documenté, `quota` sans `platform`, version hors semver, `exposure.mode` inconnu, schéma de sortie ouvert ou sans propriétés, `rate_limit` incomplet, en-tête constant non textuel, encodage inconnu, contrôle d'un genre inconnu, attente sans chemin, sonde à clé inconnue, `more` vide ; pour le délai d'une fonction, six de plus : nul, négatif, non entier, en texte, `null`, au-delà de 300 s (borne qui vaut aussi pour le connecteur). Les variantes propres à un bloc spécialisé sont dites dans son document. Les règles hors schéma sont vérifiées par la fabrique ([fabrique](fabrique.md)). `jsonschema` est un outil de test, pas une dépendance de la lib.
+`tests/test_connector_descriptions.py` vérifie que le schéma est un JSON Schema valide, que chaque description le respecte et porte le nom de son dossier, et que chaque exemple respecte l'entrée de sa fonction. Des variantes invalides du fichier Sellsy doivent être refusées : classe absente, clé inconnue, `call` et `handwritten` ensemble ou aucun des deux, fonction sensible sans `confirm`, entrée non stricte, aucun exemple, exemple hors bornes ou à argument inconnu, `embed` non documenté, `quota` sans `platform`, version hors semver, `exposure.mode` inconnu, schéma de sortie ouvert ou sans propriétés, `rate_limit` incomplet, en-tête constant non textuel, encodage inconnu, contrôle d'un genre inconnu, attente sans chemin, sonde à clé inconnue, `more` vide ; pour le délai d'une fonction, six de plus : nul, négatif, non entier, en texte, `null`, au-delà de 300 s (borne qui vaut aussi pour le connecteur). Les variantes propres à un bloc spécialisé sont dites dans son document. Les règles hors schéma sont vérifiées par la fabrique ([fabrique](fabrique.md)). `jsonschema` est une dépendance de la lib depuis le profil [Custom API](custom-api.md), qui valide à l'exécution la définition d'une organisation.
 
 Deux gardes de CI :
 
@@ -209,3 +213,6 @@ Deux gardes de CI :
 - 2026-11-06 : `effect` (`send`, `destroy`) sur une fonction sensible, facultatif, sans défaut, pour qu'un hôte distingue un envoi d'une destruction — décidé par Alexis (source : lecteur générique d'oto 1, décision du 05/11).
 - 2026-11-06 : septième mode d'authentification, `oauth2_jwt_bearer`, le compte de service ([compte](compte.md), « Le compte de service ») — décidé par le mainteneur (source : lecture de Search Console par un agent).
 - 2026-11-13 : le compte de service reçoit des niveaux d'accès et un niveau par défaut (`default_level`) ([niveaux d'accès](niveaux-d-acces.md)) — décidé par le mainteneur (source : envoi d'un sitemap à Search Console).
+- 2026-11-19 : la définition Custom API d'une organisation est un fichier du format, restreint par un profil fermé ([Custom API](custom-api.md)) ; `jsonschema` devient une dépendance de la lib — décidé par le mainteneur (source : lot 4 de la bascule des connecteurs d'oto 1 dans la lib).
+- 2026-11-19 : `connector.description` et `connector.logo_domain`, facultatifs, projetés en `description` et `logoDomain`, avec les contrôles qu'oto-core applique à leur déclaration ; les connecteurs existants ne les portent pas encore — décidé par le mainteneur (source : [Custom API](custom-api.md), reprise de la description et du logo d'oto 1).
+- 2026-11-19 : `accesses`, plusieurs accès aux mêmes fonctions, à la place de `auth`, `credential` et `modes` ([compte](compte.md), « Plusieurs accès ») — décidé par le mainteneur (source : oto-now/connectors#244, lot 2).

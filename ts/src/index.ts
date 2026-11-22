@@ -2,6 +2,7 @@
 import * as affinity from "./affinity"
 import * as aircall from "./aircall"
 import * as allo from "./allo"
+import * as alma from "./alma"
 import * as amplemarket from "./amplemarket"
 import * as amplitude from "./amplitude"
 import * as apollo from "./apollo"
@@ -13,6 +14,7 @@ import * as dataforseo from "./dataforseo"
 import * as demodesk from "./demodesk"
 import * as dropcontact from "./dropcontact"
 import * as elevenlabs from "./elevenlabs"
+import * as fillout from "./fillout"
 import * as fod from "./fod"
 import * as folk from "./folk"
 import * as fullenrich from "./fullenrich"
@@ -65,6 +67,7 @@ import type { Connector } from "./types"
 export { affinity }
 export { aircall }
 export { allo }
+export { alma }
 export { amplemarket }
 export { amplitude }
 export { apollo }
@@ -76,6 +79,7 @@ export { dataforseo }
 export { demodesk }
 export { dropcontact }
 export { elevenlabs }
+export { fillout }
 export { fod }
 export { folk }
 export { fullenrich }
@@ -131,6 +135,7 @@ export const connectors: readonly Connector[] = [
   affinity.connector,
   aircall.connector,
   allo.connector,
+  alma.connector,
   amplemarket.connector,
   amplitude.connector,
   apollo.connector,
@@ -142,6 +147,7 @@ export const connectors: readonly Connector[] = [
   demodesk.connector,
   dropcontact.connector,
   elevenlabs.connector,
+  fillout.connector,
   fod.connector,
   folk.connector,
   fullenrich.connector,

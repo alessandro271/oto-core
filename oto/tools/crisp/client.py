@@ -1,6 +1,9 @@
-"""Crisp REST API V1 client (https://docs.crisp.chat/references/rest-api/v1/) —
-read-only: the workspace (website), its inboxes, conversations and their
-messages, contacts (people profiles) and the knowledge base (helpdesk).
+"""Crisp REST API V1 client (https://docs.crisp.chat/references/rest-api/v1/):
+reads the workspace (website), its inboxes, conversations and their messages,
+contacts (people profiles) and the knowledge base (helpdesk); writes an
+internal note, a conversation's state and contact details, a contact's profile
+and custom data, the segments of a conversation or a contact, and sends a text
+message to a conversation's contact. Nothing deletes.
 
 The client of the `crisp` description (`connectors/crisp/connector.yaml`): one
 method per function, named like it, with its arguments; responses are returned
@@ -31,6 +34,12 @@ of the token: it is a setting of the account, and every path starts with
   empty, `.` or `..` segment is refused.
 - **Flags** (`include_empty`, `filter_unread`…) are 0 or 1; `True` / `False`
   are accepted and sent as 1 / 0.
+- **Writes send a JSON body** of the fields given only: an absent argument is
+  not sent, and creates no parent object (`person` of a profile). A message
+  (note or text) is sent from `operator` with origin `chat`.
+- **Segments are sent whole** (`set_conversation_segments`,
+  `set_person_segments`): the reference does not say whether the list replaces
+  the current one; a caller that adds or removes one reads the list first.
 - **Rate limit: 10,000 requests per day per website token.** A 420 or 429 is
   never retried here: a daily counter does not reset within a request.
 """
@@ -46,6 +55,8 @@ import requests
 
 from ..common import raise_for_upstream
 from ..common.credentials import require
+from ._api.checks import choice as _choice, segment as _segment, text as _text
+from ._api.writes import CONVERSATION_STATES, MAX_SEGMENT_LENGTH, MAX_SEGMENTS, WritesMixin
 
 _HTTP_TIMEOUT = (10, 60)  # (connect, read) — never an unbounded wait
 BASE_URL = "https://api.crisp.chat/v1"
@@ -64,16 +75,6 @@ Flag = Union[bool, int, None]
 def basic_signature(token_identifier: str, token_key: str) -> str:
     """`base64(identifier:key)` — the value that follows « Basic »."""
     return base64.b64encode(f"{token_identifier}:{token_key}".encode("utf-8")).decode("ascii")
-
-
-def _segment(value: Any, name: str) -> str:
-    """One path segment: a non-empty string, never `.` or `..`, percent-encoded
-    (`@` kept, so that an email stays readable)."""
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"`{name}` must be a non-empty string; got {value!r}.")
-    if value in (".", ".."):
-        raise ValueError(f"`{name}` cannot be {value!r}.")
-    return quote(value, safe="@")
 
 
 def _tree_path(value: Any) -> str:
@@ -111,15 +112,6 @@ def _flag(value: Flag, name: str) -> Optional[int]:
     raise ValueError(f"`{name}` must be 0 or 1; got {value!r}.")
 
 
-def _choice(value: Optional[str], name: str, allowed: tuple) -> Optional[str]:
-    if value is None:
-        return None
-    if value not in allowed:
-        raise ValueError(f"`{name}` invalid: {value!r}. Accepted values: "
-                         + ", ".join(repr(a) for a in allowed))
-    return value
-
-
 def _date_time(value: Optional[str], name: str) -> Optional[str]:
     """An ISO 8601 date-time WITH its offset, sent as given."""
     if value is None:
@@ -146,16 +138,9 @@ def _timestamp(value: Optional[int], name: str) -> Optional[int]:
     return value
 
 
-def _text(value: Any, name: str) -> Optional[str]:
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"`{name}` must be a non-empty string; got {value!r}.")
-    return value
-
-
-class CrispClient:
-    """Crisp REST API V1, read-only, on one workspace. Basic auth with a website token."""
+class CrispClient(WritesMixin):
+    """Crisp REST API V1 on one workspace: reads, and a few writes on conversations
+    and contacts. Basic auth with a website token."""
 
     BASE_URL = BASE_URL
 
@@ -190,6 +175,13 @@ class CrispClient:
         """GET `path` under the workspace; a refusal of the API raises `UpstreamHTTPError`."""
         clean = {k: v for k, v in (params or {}).items() if v is not None}
         resp = self.session.request("GET", f"{self.base_url}{path}", params=clean or None,
+                                    timeout=_HTTP_TIMEOUT)
+        raise_for_upstream(resp, service="crisp")
+        return resp.json() if resp.content else {}
+
+    def _send(self, method: str, path: str, body: Dict[str, Any]) -> Any:
+        """`method` `path` under the workspace with a JSON body; never retried."""
+        resp = self.session.request(method, f"{self.base_url}{path}", json=body,
                                     timeout=_HTTP_TIMEOUT)
         raise_for_upstream(resp, service="crisp")
         return resp.json() if resp.content else {}
@@ -400,5 +392,6 @@ class CrispClient:
 
 __all__ = [
     "CrispClient", "basic_signature", "BASE_URL", "MIN_PER_PAGE", "MAX_PER_PAGE",
-    "SEARCH_TYPES", "SORT_ORDERS", "CONTENT_TYPES", "ENTRY_STATUSES",
+    "SEARCH_TYPES", "SORT_ORDERS", "CONTENT_TYPES", "ENTRY_STATUSES", "CONVERSATION_STATES",
+    "MAX_SEGMENTS", "MAX_SEGMENT_LENGTH",
 ]

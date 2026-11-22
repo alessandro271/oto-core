@@ -348,7 +348,7 @@ export const listMailboxes = defineFunction({
     body: {},
     headers: {},
   },
-  output: { items: "data", strip: ["password", "imapPassword", "smtpPassword", "secret", "authCode", "admin"], schema: {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "integer"}, "email": {"type": "string"}, "firstName": {"type": "string"}, "lastName": {"type": "string"}, "signature": {"type": "string"}, "forwardTo": {"type": "string"}, "status": {"enum": ["active", "pending", "inactive"]}, "avatar": {"type": "string"}, "type": {"enum": ["google", "shared", "private", "outlook"]}, "isAdmin": {"type": "boolean"}, "domain": {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "integer"}, "createdAt": {"type": "string", "format": "date-time"}, "expireAt": {"type": "string", "format": "date-time"}, "domain": {"type": "string"}, "domainOwner": {"type": "object", "description": "Registrant contact."}, "redirectUrl": {"type": ["string", "null"]}, "type": {"enum": ["google", "shared", "private", "outlook", "unassigned"]}, "status": {"enum": ["active", "pending", "inactive"]}, "nameservers": {"type": ["array", "null"], "items": {"type": "string"}}, "error": {"type": ["object", "null"]}}}, "imapHost": {"type": "string"}, "imapPort": {"type": "integer"}, "imapTLS": {"type": "boolean"}, "imapUsername": {"type": "string"}, "smtpHost": {"type": "string"}, "smtpPort": {"type": "integer"}, "smtpTLS": {"type": "boolean"}, "smtpUsername": {"type": "string"}, "scheduledDeletionAt": {"type": ["string", "null"]}, "error": {"type": ["object", "null"]}}} },
+  output: { items: "data", strip: ["password", "imapPassword", "smtpPassword", "secret", "authCode", "admin"], schema: {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "integer"}, "email": {"type": "string"}, "firstName": {"type": "string"}, "lastName": {"type": "string"}, "signature": {"type": "string"}, "forwardTo": {"type": "string"}, "status": {"enum": ["active", "pending", "inactive"]}, "avatar": {"type": ["string", "null"]}, "type": {"enum": ["google", "shared", "private", "outlook"]}, "isAdmin": {"type": "boolean"}, "domain": {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "integer"}, "createdAt": {"type": "string", "format": "date-time"}, "expireAt": {"type": "string", "format": "date-time"}, "domain": {"type": "string"}, "domainOwner": {"type": "object", "description": "Registrant contact."}, "redirectUrl": {"type": ["string", "null"]}, "type": {"enum": ["google", "shared", "private", "outlook", "unassigned"]}, "status": {"enum": ["active", "pending", "inactive"]}, "nameservers": {"type": ["array", "null"], "items": {"type": "string"}}, "error": {"type": ["object", "null"]}}}, "imapHost": {"type": "string"}, "imapPort": {"type": "integer"}, "imapTLS": {"type": "boolean"}, "imapUsername": {"type": "string"}, "smtpHost": {"type": "string"}, "smtpPort": {"type": "integer"}, "smtpTLS": {"type": "boolean"}, "smtpUsername": {"type": "string"}, "scheduledDeletionAt": {"type": ["string", "null"]}, "error": {"type": ["object", "null"]}}} },
   cost: { per: "request" },
 })
 
@@ -376,7 +376,56 @@ export const getMailbox = defineFunction({
     body: {},
     headers: {},
   },
-  output: { strip: ["password", "imapPassword", "smtpPassword", "secret", "authCode", "admin"], schema: {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "integer"}, "email": {"type": "string"}, "firstName": {"type": "string"}, "lastName": {"type": "string"}, "signature": {"type": "string"}, "forwardTo": {"type": "string"}, "status": {"enum": ["active", "pending", "inactive"]}, "avatar": {"type": "string"}, "type": {"enum": ["google", "shared", "private", "outlook"]}, "isAdmin": {"type": "boolean"}, "domain": {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "integer"}, "createdAt": {"type": "string", "format": "date-time"}, "expireAt": {"type": "string", "format": "date-time"}, "domain": {"type": "string"}, "domainOwner": {"type": "object", "description": "Registrant contact."}, "redirectUrl": {"type": ["string", "null"]}, "type": {"enum": ["google", "shared", "private", "outlook", "unassigned"]}, "status": {"enum": ["active", "pending", "inactive"]}, "nameservers": {"type": ["array", "null"], "items": {"type": "string"}}, "error": {"type": ["object", "null"]}}}, "imapHost": {"type": "string"}, "imapPort": {"type": "integer"}, "imapTLS": {"type": "boolean"}, "imapUsername": {"type": "string"}, "smtpHost": {"type": "string"}, "smtpPort": {"type": "integer"}, "smtpTLS": {"type": "boolean"}, "smtpUsername": {"type": "string"}, "scheduledDeletionAt": {"type": ["string", "null"]}, "error": {"type": ["object", "null"]}}} },
+  output: { strip: ["password", "imapPassword", "smtpPassword", "secret", "authCode", "admin"], schema: {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "integer"}, "email": {"type": "string"}, "firstName": {"type": "string"}, "lastName": {"type": "string"}, "signature": {"type": "string"}, "forwardTo": {"type": "string"}, "status": {"enum": ["active", "pending", "inactive"]}, "avatar": {"type": ["string", "null"]}, "type": {"enum": ["google", "shared", "private", "outlook"]}, "isAdmin": {"type": "boolean"}, "domain": {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "integer"}, "createdAt": {"type": "string", "format": "date-time"}, "expireAt": {"type": "string", "format": "date-time"}, "domain": {"type": "string"}, "domainOwner": {"type": "object", "description": "Registrant contact."}, "redirectUrl": {"type": ["string", "null"]}, "type": {"enum": ["google", "shared", "private", "outlook", "unassigned"]}, "status": {"enum": ["active", "pending", "inactive"]}, "nameservers": {"type": ["array", "null"], "items": {"type": "string"}}, "error": {"type": ["object", "null"]}}}, "imapHost": {"type": "string"}, "imapPort": {"type": "integer"}, "imapTLS": {"type": "boolean"}, "imapUsername": {"type": "string"}, "smtpHost": {"type": "string"}, "smtpPort": {"type": "integer"}, "smtpTLS": {"type": "boolean"}, "smtpUsername": {"type": "string"}, "scheduledDeletionAt": {"type": ["string", "null"]}, "error": {"type": ["object", "null"]}}} },
+  cost: { per: "request" },
+})
+
+export const updateMailbox = defineFunction({
+  name: "mailpool.update_mailbox",
+  connector: "mailpool",
+  class: "write",
+  act: true,
+  description: "Change a mailbox's sender settings in place: first and last name, signature, forwarding address, and the avatar of a Google or Outlook mailbox (null removes it). The four text fields are always sent, so a write that replaces the whole settings erases nothing: read the mailbox with get_mailbox first and pass its current first name, last name, signature and forwarding address, with your changes on top. The avatar is sent only when given. The address, type and domain cannot be changed. Credentials are never returned.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["mailbox_id", "first_name", "last_name", "signature", "forward_to"],
+    "properties": {
+      "mailbox_id": {"type": "integer", "minimum": 1, "description": "Mailpool mailbox id."},
+      "first_name": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Sender first name: the current one unless it changes."
+      },
+      "last_name": {
+        "type": "string",
+        "minLength": 1,
+        "description": "Sender last name: the current one unless it changes."
+      },
+      "signature": {"type": "string", "description": "Email signature: the current one unless it changes."},
+      "forward_to": {
+        "type": "string",
+        "description": "Address incoming mail is forwarded to: the current one unless it changes."
+      },
+      "avatar": {
+        "type": ["string", "null"],
+        "description": "Avatar image URL, Google and Outlook mailboxes only; null removes it."
+      }
+    }
+  },
+  examples: [
+    { title: "New last name and signature, the first name and forwarding address kept", input: {"mailbox_id": 5301, "first_name": "Anna", "last_name": "Martin", "signature": "Anna Martin\nExample Inc.", "forward_to": "replies@example.com"} },
+  ],
+  refusals: [],
+  request: {
+    method: "PUT",
+    path: "/mailboxes/{mailbox_id}",
+    pathParams: ["mailbox_id"],
+    query: {},
+    body: {"firstName": "first_name", "lastName": "last_name", "signature": "signature", "forwardTo": "forward_to", "avatar": "avatar"},
+    headers: {},
+  },
+  output: { strip: ["password", "imapPassword", "smtpPassword", "secret", "authCode", "admin"], schema: {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "integer"}, "email": {"type": "string"}, "firstName": {"type": "string"}, "lastName": {"type": "string"}, "signature": {"type": "string"}, "forwardTo": {"type": "string"}, "status": {"enum": ["active", "pending", "inactive"]}, "avatar": {"type": ["string", "null"]}, "type": {"enum": ["google", "shared", "private", "outlook"]}, "isAdmin": {"type": "boolean"}, "domain": {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "integer"}, "createdAt": {"type": "string", "format": "date-time"}, "expireAt": {"type": "string", "format": "date-time"}, "domain": {"type": "string"}, "domainOwner": {"type": "object", "description": "Registrant contact."}, "redirectUrl": {"type": ["string", "null"]}, "type": {"enum": ["google", "shared", "private", "outlook", "unassigned"]}, "status": {"enum": ["active", "pending", "inactive"]}, "nameservers": {"type": ["array", "null"], "items": {"type": "string"}}, "error": {"type": ["object", "null"]}}}, "imapHost": {"type": "string"}, "imapPort": {"type": "integer"}, "imapTLS": {"type": "boolean"}, "imapUsername": {"type": "string"}, "smtpHost": {"type": "string"}, "smtpPort": {"type": "integer"}, "smtpTLS": {"type": "boolean"}, "smtpUsername": {"type": "string"}, "scheduledDeletionAt": {"type": ["string", "null"]}, "error": {"type": ["object", "null"]}}} },
   cost: { per: "request" },
 })
 
@@ -612,7 +661,7 @@ export const connector = defineConnector({
   name: "mailpool",
   label: "Mailpool",
   namespace: "mailpool",
-  version: "1.1.1",
+  version: "1.2.0",
   apiVersion: "v1",
   baseUrl: "https://app.mailpool.io/v1/api",
   auth: {"kind": "api_key", "in": "header", "name": "X-Api-Authorization", "key": "api_key"},
@@ -641,6 +690,7 @@ export const connector = defineConnector({
     listDomainOwners,
     listMailboxes,
     getMailbox,
+    updateMailbox,
     listSpamChecks,
     createSpamCheck,
     getSpamCheck,

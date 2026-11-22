@@ -1,8 +1,9 @@
-"""Contrat du client Crisp (REST API V1, jeton de site en Basic, lecture seule) contre sa description.
+"""Contrat du client Crisp (REST API V1, jeton de site en Basic) contre sa description.
 
 Mocke `requests.Session.request`. Chaque exemple de chaque fonction de `connectors/crisp/connector.yaml` est joué par la
-méthode du même nom, avec les mêmes arguments : la requête envoyée (verbe, adresse, query) est celle que la description
-dit. S'y ajoutent l'authentification (en-têtes seulement, jamais dans l'adresse), les refus locaux avant tout appel, le
+méthode du même nom, avec les mêmes arguments : la requête envoyée (verbe, adresse, query, corps JSON) est celle que la
+description dit. Pour les écritures : seuls les champs donnés partent, une note et un message partent de `operator`,
+et un message n'est jamais rejoué. S'y ajoutent l'authentification (en-têtes seulement, jamais dans l'adresse), les refus locaux avant tout appel, le
 chemin d'arbre de la base de connaissances (ses `/` gardés, chaque segment encodé) et la traduction d'un refus de l'API.
 """
 from __future__ import annotations
@@ -41,6 +42,7 @@ def sent(monkeypatch):
 
     def fake_request(self, method, url, **kwargs):
         seen["calls"].append({"method": method, "url": url, "params": kwargs.get("params") or {},
+                              "json": kwargs.get("json"),
                               "timeout": kwargs.get("timeout"), "headers": dict(self.headers)})
         return seen["responses"].pop(0) if seen["responses"] else _Resp()
 
@@ -68,8 +70,21 @@ def _cases():
 
 def test_one_method_per_function_and_nothing_else():
     names = {f["name"] for f in _description()["functions"]}
-    public = {n for n in vars(cc.CrispClient) if not n.startswith("_") and callable(getattr(cc.CrispClient, n))}
+    public = {n for n in dir(cc.CrispClient) if not n.startswith("_") and callable(getattr(cc.CrispClient, n))}
     assert public == names
+
+
+def _body(table: dict, given: dict) -> dict:
+    """The body a table says, the absent arguments left out and no empty parent created."""
+    out = {}
+    for key, value in table.items():
+        if isinstance(value, dict):
+            nested = _body(value, given)
+            if nested:
+                out[key] = nested
+        elif value in given:
+            out[key] = given[value]
+    return out
 
 
 @pytest.mark.parametrize("function, given", list(_cases()))
@@ -79,9 +94,14 @@ def test_each_example_sends_the_request_the_description_says(cli, sent, function
     [request] = sent["calls"]
     base = _description()["connector"]["base_url"].format(website_id=WEBSITE_ID)
     path = call["path"].format(**{a: given[a] for a in re.findall(r"{(\w+)}", call["path"])})
-    assert request["method"] == call["method"] == "GET"
+    assert request["method"] == call["method"]
     assert request["url"] == base + path
     assert request["params"] == {api: given[a] for api, a in call.get("query", {}).items() if a in given}
+    if call["method"] == "GET":
+        assert request["json"] is None
+    else:
+        expected = {**call.get("constants", {}).get("body", {}), **_body(call.get("body", {}), given)}
+        assert request["json"] == expected
 
 
 def test_every_method_argument_is_an_argument_of_its_function():
@@ -171,6 +191,66 @@ def test_a_date_time_with_its_offset_is_sent_as_given(cli, sent):
     assert sent["calls"][0]["params"] == {"filter_date_start": "2026-03-01T17:00:00.000Z",
                                           "filter_date_end": "2026-03-02T00:00:00+02:00",
                                           "order_date_updated": 1}
+
+
+# --- écritures ---------------------------------------------------------------------
+
+
+def test_a_note_and_a_message_differ_only_by_their_type(cli, sent):
+    cli.add_conversation_note("session_1", "for the team")
+    cli.send_message("session_1", "for the contact")
+    note, message = (c["json"] for c in sent["calls"])
+    assert note == {"type": "note", "from": "operator", "origin": "chat", "content": "for the team"}
+    assert message == {"type": "text", "from": "operator", "origin": "chat", "content": "for the contact"}
+    assert all(c["method"] == "POST" and c["url"].endswith("/conversation/session_1/message")
+               for c in sent["calls"])
+
+
+def test_only_the_fields_given_are_sent_and_no_empty_person(cli, sent):
+    cli.update_person("p1", email="jane@example.test")
+    cli.update_person("p1", phone="+33600000000")
+    cli.update_conversation_meta("session_1", nickname="Jane Doe")
+    assert [c["json"] for c in sent["calls"]] == [
+        {"email": "jane@example.test"}, {"person": {"phone": "+33600000000"}}, {"nickname": "Jane Doe"}]
+    assert all(c["method"] == "PATCH" for c in sent["calls"])
+
+
+def test_segments_are_sent_whole_an_empty_list_included(cli, sent):
+    cli.set_conversation_segments("session_1", ["a", "b"])
+    cli.set_person_segments("p1", [])
+    assert sent["calls"][0]["json"] == {"segments": ["a", "b"]}
+    assert sent["calls"][1]["json"] == {"segments": []}
+    assert sent["calls"][1]["url"].endswith("/people/profile/p1")
+
+
+@pytest.mark.parametrize("status", [406, 409, 503])
+def test_a_refused_message_is_never_sent_twice(cli, sent, status):
+    sent["responses"].append(_Resp(status, {"error": True, "reason": "x", "data": {}}))
+    with pytest.raises(UpstreamHTTPError):
+        cli.send_message("session_1", "hello")
+    assert len(sent["calls"]) == 1
+
+
+@pytest.mark.parametrize("call, name", [
+    (lambda c: c.add_conversation_note("session_1", ""), "content"),
+    (lambda c: c.send_message("session_1", None), "content"),
+    (lambda c: c.send_message("..", "hello"), "session_id"),
+    (lambda c: c.change_conversation_state("session_1", "closed"), "state"),
+    (lambda c: c.change_conversation_state("session_1", None), "state"),
+    (lambda c: c.update_conversation_meta("session_1"), "nickname"),
+    (lambda c: c.update_conversation_meta("session_1", email=""), "email"),
+    (lambda c: c.update_person("p1"), "email"),
+    (lambda c: c.set_conversation_segments("session_1", "vip"), "segments"),
+    (lambda c: c.set_conversation_segments("session_1", ["vip", "vip"]), "segments"),
+    (lambda c: c.set_person_segments("p1", [""]), "segments"),
+    (lambda c: c.update_person_data("p1", {}), "data"),
+    (lambda c: c.update_person_data("p1", {"k": None}), "data"),
+    (lambda c: c.update_person_data("p1", {"k": {"x": 1}}), "data"),
+])
+def test_a_bad_write_is_refused_before_any_call(cli, sent, call, name):
+    with pytest.raises(ValueError, match=name):
+        call(cli)
+    assert sent["calls"] == []
 
 
 # --- réponses ---------------------------------------------------------------------

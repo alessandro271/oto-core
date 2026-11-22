@@ -1,8 +1,9 @@
 """Garde : un seul numéro de version pour le dépôt. Le paquet npm `ts/` porte celle de la lib (`pyproject.toml`).
 
-Un tag `vX.Y.Z` publie les deux (`.github/workflows/publish.yml`) ; un paquet resté en arrière ferait échouer sa
-publication après celle de la lib, et le tag resterait à moitié publié. Rejouée sur le tag par `publish.yml`, la garde
-bloque aussi la publication PyPI. Le geste de publication : `docs/release.md`.
+Un tag `vX.Y.Z` publie la lib sur PyPI (`.github/workflows/publish.yml`) ; le paquet `ts/` ne se publie pas, ses hôtes
+l'épinglent sur ce tag (décision du 2026-11-21) et doivent y lire la même version. Le job `npm` de `publish.yml` refuse
+un tag que `ts/package.json` ne porte pas ; rejouée sur le tag par `publish.yml`, cette garde bloque aussi la
+publication PyPI. Le geste de publication : `docs/release.md`.
 """
 from __future__ import annotations
 
