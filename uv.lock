@@ -1179,7 +1179,7 @@ wheels = [
 
 [[package]]
 name = "oto-core"
-version = "1.246.0"
+version = "1.247.0"
 source = { editable = "." }
 dependencies = [
     { name = "defusedxml" },
