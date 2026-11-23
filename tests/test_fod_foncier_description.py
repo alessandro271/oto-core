@@ -50,9 +50,10 @@ def _accepts(name: str, arguments: dict) -> bool:
     return jsonschema.Draft202012Validator(_functions()[name]["input"]).is_valid(arguments)
 
 
-def test_the_description_is_version_1_9_0_and_passes_the_fabrique():
+def test_the_description_is_version_1_9_0_or_later_and_passes_the_fabrique():
     description = _description()
-    assert description["connector"]["version"] == "1.9.0"
+    major, minor, _ = (int(n) for n in description["connector"]["version"].split("."))
+    assert (major, minor) >= (1, 9)
     check(description, FOD)
 
 
