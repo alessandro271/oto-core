@@ -2010,6 +2010,384 @@ export const urbanListPublicServices = defineFunction({
   cost: { per: "request" },
 })
 
+export const urbanListCachedRegulations = defineFunction({
+  name: "fod.urban_list_cached_regulations",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "List the written regulations of local plans FOD already holds, readable at once without an ingestion: {count, reglements: [{idurba, titre, doc_type, partition, text_chars, taille, scanne, genere_le}]}. The cache is shared by every FOD consumer and filled on demand: a plan absent from it is not missing from the national town-planning portal; start its ingestion. scanne true means a scanned PDF, unreadable without OCR. No filter: the whole list comes back.",
+  schema: {"type": "object", "additionalProperties": false, "properties": {}},
+  examples: [
+    { title: "Regulations FOD holds", input: {} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/api/reglements",
+    pathParams: [],
+    query: {},
+    body: {},
+    headers: {},
+  },
+  output: { strip: ["reglements.zones"] },
+  cost: { per: "request" },
+})
+
+export const urbanGetRegulationText = defineFunction({
+  name: "fod.urban_get_regulation_text",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "Get the whole written regulation of a local plan FOD holds, as a text file of yours kept 24 hours: the answer gives its file id. It is the text extracted from the PDF, often several hundred thousand characters. Use it to read the regulation from end to end, or search it yourself, when the chapter of a zone or the passages of a query do not answer: a zone whose chapter is not found, general provisions, definitions, a table of contents. The plan must be held: read the ingestion state, or start the ingestion, first. A scanned PDF holds no text: no file comes back.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["idurba"],
+    "properties": {
+      "idurba": {
+        "type": "string",
+        "pattern": "^[0-9A-Za-z]{5,9}_(PLU|PLUI|PLUi|POS|CC|PSMV)_[0-9]{8}(_[0-9A-Za-z]{1,5})?$",
+        "description": "Identifier of the planning document, as zone.idurba of the zoning: 80021_PLU_20251211."
+      }
+    }
+  },
+  examples: [
+    { title: "Whole regulation of the Amiens local plan", input: {"idurba": "80021_PLU_20251211"} },
+  ],
+  refusals: [
+    { code: "regulation_not_held", when: 404, message: "FOD does not hold this regulation: start its ingestion, then read its state until pret." },
+  ],
+  request: {
+    method: "GET",
+    path: "/api/reglements/{idurba}/raw",
+    pathParams: ["idurba"],
+    query: {},
+    body: {},
+    headers: {},
+  },
+  output: { file: { from: "body", types: {"txt": ["text/plain"]}, name: { template: "regulation-{idurba}.txt" }, maxBytes: 52428800 } },
+  cost: { per: "request" },
+})
+
+export const urbanListPriorityDistricts = defineFunction({
+  name: "fod.urban_list_priority_districts",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "List the priority districts of urban policy (QPV, national dataset) of a commune: {code_insee, nb_qpv, qpv_dans_la_commune, qpv: [{code_qp, nom_qp, commune_qp, code_insee, nom_epci}]}. nb_qpv counts them all; qpv lists 20 at most. Being in a QPV, or within 300 m of one, is the geographic condition of several incentives, such as the reduced 5.5% VAT on a new home purchase; never the whole eligibility, price and buyer income caps also apply. For one address, list the districts near its point.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["code_insee"],
+    "properties": {
+      "code_insee": {
+        "type": "string",
+        "pattern": "^([0-9]{2}|2A|2B)[0-9]{3}$",
+        "description": "INSEE commune code, 5 characters (not the postal code)."
+      }
+    }
+  },
+  examples: [
+    { title: "Priority districts of Roubaix", input: {"code_insee": "59512"} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/api/urba/qpv/{code_insee}",
+    pathParams: ["code_insee"],
+    query: {},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const urbanListPriorityDistrictsNearPoint = defineFunction({
+  name: "fod.urban_list_priority_districts_near_point",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "List the priority districts of urban policy (QPV) within radius_m metres of a point: {point: [lon, lat], radius_m, nb_qpv, eligible_geo, qpv: [{code_qp, nom_qp, commune_qp, code_insee, nom_epci}]}, 20 listed at most. eligible_geo is true when at least one district lies within the radius; 300 m, the default, is the perimeter of the reduced 5.5% VAT on a new home purchase. It is the geographic condition only: the price and buyer income caps are the caller's to check. Geocode the address first.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["lon", "lat"],
+    "properties": {
+      "lon": {
+        "type": "number",
+        "minimum": -180,
+        "maximum": 180,
+        "personal": true,
+        "description": "Longitude, WGS 84."
+      },
+      "lat": {"type": "number", "minimum": -90, "maximum": 90, "personal": true, "description": "Latitude, WGS 84."},
+      "radius_m": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000,
+        "default": 300,
+        "description": "Radius around the point, metres."
+      }
+    }
+  },
+  examples: [
+    { title: "Districts within 300 m of a point in Roubaix", input: {"lon": 3.1746, "lat": 50.6942} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/api/urba/qpv/near",
+    pathParams: [],
+    query: {"lon": "lon", "lat": "lat", "radius_m": "radius_m"},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const urbanGetLandAgencyIntervention = defineFunction({
+  name: "fod.urban_get_land_agency_intervention",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "Get whether the public land agency of Île-de-France (EPFIF) intervenes in a commune: {secteur_epfif, nom, niveau_max, interventions: [{type, partenaire, date, kmlid}], source, stale, note}. type is veille (land watch), maitrise (land acquisition) or orcodin (ORCOD-IN, degraded condominiums); niveau_max is the strongest. An intervening commune means land under pressure, pre-emption often delegated to the agency: a public operator to reckon with, not neutral land. secteur_epfif false: no known intervention, or a commune outside Île-de-France. Read from the agency's map page, refreshed weekly; stale true means the last refresh failed and the previous copy is served.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["code_insee"],
+    "properties": {
+      "code_insee": {
+        "type": "string",
+        "pattern": "^([0-9]{2}|2A|2B)[0-9]{3}$",
+        "description": "INSEE commune code, 5 characters (not the postal code)."
+      }
+    }
+  },
+  examples: [
+    { title: "EPFIF interventions in Clichy-sous-Bois", input: {"code_insee": "93014"} },
+  ],
+  refusals: [
+    { code: "land_agency_source_unavailable", when: "the response carries secteur_epfif null", message: "The EPFIF map page could not be read and FOD holds no copy of it: retry later before concluding." },
+  ],
+  expect: [
+    { kind: "non_empty", refusal: "land_agency_source_unavailable", path: "secteur_epfif" },
+  ],
+  request: {
+    method: "GET",
+    path: "/api/urba/epfif/{code_insee}",
+    pathParams: ["code_insee"],
+    query: {},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const urbanGetCommuneStatistics = defineFunction({
+  name: "fod.urban_get_commune_statistics",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "Get one block of a commune's statistics from INSEE (Mélodi: census and Filosofi). population: {year: municipal population} for each census vintage INSEE publishes, about three over eleven years (the trend). familles: {total_familles, effectifs, parts_pct, part_monoparentales_pct} by family type. personnes_seules: a number, the one-person households, null without data. revenus: {millesime, revenu_median_uc_eur, taux_pauvrete_pct}. logement: {millesime, residences_principales, logements_vacants, logements_secondaires, taux_vacance_pct, statut_occupation: {effectifs, parts_pct, part_social_pct}}. A missing figure is null, never zero. Paris, Lyon and Marseille answer for the whole city or an arrondissement (75112, 13201). Inside a commune, the IRIS census gives the districts.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["code_insee", "block"],
+    "properties": {
+      "code_insee": {
+        "type": "string",
+        "pattern": "^([0-9]{2}|2A|2B)[0-9]{3}$",
+        "description": "INSEE commune code, 5 characters (not the postal code)."
+      },
+      "block": {
+        "type": "string",
+        "enum": ["population", "familles", "personnes_seules", "revenus", "logement"],
+        "description": "The block to read; one call per block."
+      }
+    }
+  },
+  examples: [
+    { title: "Population of Bordeaux over the census vintages", input: {"code_insee": "33063", "block": "population"} },
+    { title: "Housing of Marseille 1er", input: {"code_insee": "13201", "block": "logement"} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/api/urba/insee/{code_insee}/{block}",
+    pathParams: ["code_insee", "block"],
+    query: {},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const urbanGetIrisCensus = defineFunction({
+  name: "fod.urban_get_iris_census",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "Get the census figures of one IRIS, INSEE's district mesh of about 2,000 inhabitants (census 2021, a copy held by FOD): {iris, com, typ_iris, lab_iris, pop, pop_0_19, pop_20_64, pop_65p, logements, res_principales, res_secondaires, logements_vacants, maisons, appartements, rp_en_appartement}. typ_iris: H housing, A business, D other, Z a commune not split into IRIS. lab_iris is INSEE's label, often a number, not a district name. One census year: no trend here; the commune statistics give it.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["code"],
+    "properties": {
+      "code": {
+        "type": "string",
+        "pattern": "^([0-9]{2}|2A|2B)[0-9]{7}$",
+        "description": "IRIS code, 9 characters: the commune code and 4 digits."
+      }
+    }
+  },
+  examples: [
+    { title: "One IRIS of Marseille 1er", input: {"code": "132010101"} },
+  ],
+  refusals: [
+    { code: "iris_not_found", when: "the response is null", message: "No IRIS with this code: list the IRIS of its commune to find the codes." },
+  ],
+  expect: [
+    { kind: "non_empty", refusal: "iris_not_found", path: "iris" },
+  ],
+  request: {
+    method: "GET",
+    path: "/api/urba/iris/by_iris/{code}",
+    pathParams: ["code"],
+    query: {},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const urbanListCommuneIrisCensus = defineFunction({
+  name: "fod.urban_list_commune_iris_census",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "List the census figures of every IRIS of a commune (census 2021), with the commune's totals: {com, nb_iris, totaux: {pop, logements, res_principales, res_secondaires, logements_vacants, maisons, appartements, rp_en_appartement}, iris: [{iris, typ_iris, lab_iris, pop, pop_0_19, pop_20_64, pop_65p, ...}]}, 200 IRIS at most. A commune not split into IRIS has one row, typ_iris Z. Paris, Lyon and Marseille are read by arrondissement.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["code"],
+    "properties": {
+      "code": {
+        "type": "string",
+        "pattern": "^([0-9]{2}|2A|2B)[0-9]{3}$",
+        "description": "INSEE commune code; for Paris, Lyon and Marseille an arrondissement (75112, 69383, 13201)."
+      }
+    }
+  },
+  examples: [
+    { title: "IRIS of Paris 12e", input: {"code": "75112"} },
+  ],
+  refusals: [
+    { code: "commune_without_iris", when: "the response carries an empty iris list", message: "No IRIS under this code: an unknown commune, or the whole-city code of Paris, Lyon or Marseille, read by arrondissement (75101 to 75120, 69381 to 69389, 13201 to 13216)." },
+  ],
+  expect: [
+    { kind: "non_empty", refusal: "commune_without_iris", path: "iris" },
+  ],
+  request: {
+    method: "GET",
+    path: "/api/urba/iris/by_commune/{code}",
+    pathParams: ["code"],
+    query: {},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const urbanListMayors = defineFunction({
+  name: "fod.urban_list_mayors",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "List mayors from the national register of elected officials (Ministry of the Interior, data.gouv.fr): {fonction, total, tronque, signaux: [{nom, prenom, fonction, code_commune, commune, code_departement, debut_mandat, debut_fonction}]}. On a public body the decision-maker is an elected official, not a company director. Match on the commune code, never on its name: Sainte-Marie exists dozens of times. debut_fonction tells whether the mayor changed since a past contact. total counts the rows returned; tronque true means more matched than limit. Birth date and sex, in the source, are not returned. A commune code or a department is required.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "anyOf": [{"required": ["code_commune"]}, {"required": ["departement"]}],
+    "properties": {
+      "code_commune": {
+        "type": "string",
+        "pattern": "^([0-9]{2}|2A|2B)[0-9]{3}$",
+        "description": "INSEE commune code, 5 characters (not the postal code)."
+      },
+      "departement": {
+        "type": "string",
+        "pattern": "^([0-9]{2}|2A|2B|97[1-6])$",
+        "description": "Department code, such as 33, 2A or 974."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 100,
+        "description": "Most officials returned."
+      }
+    }
+  },
+  examples: [
+    { title: "Mayor of Bordeaux", input: {"code_commune": "33063"} },
+    { title: "Mayors of Corse-du-Sud", input: {"departement": "2A", "limit": 200} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/api/urba/elus/maires",
+    pathParams: [],
+    query: {"code_commune": "code_commune", "departement": "departement", "limit": "limit"},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const urbanListEpciPresidents = defineFunction({
+  name: "fod.urban_list_epci_presidents",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "List presidents of intercommunal bodies (EPCI: metropolis, urban or community of communes) from the national register of elected officials: {fonction, total, tronque, signaux: [{nom, prenom, fonction, siren_epci, epci, code_commune, commune, code_departement, debut_mandat, debut_fonction}]}. Presidents only, not the thousands of community councillors. An EPCI has a SIREN, no commune code: code_commune is the commune the register attaches the president to. total counts the rows returned; tronque true means more matched than limit. Birth date and sex are not returned. Without siren or departement, every president up to limit.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "siren": {
+        "type": "string",
+        "pattern": "^[0-9]{9}$",
+        "description": "SIREN of an intercommunal body (EPCI), such as a metropolis."
+      },
+      "departement": {
+        "type": "string",
+        "pattern": "^([0-9]{2}|2A|2B|97[1-6])$",
+        "description": "Department code, such as 33, 2A or 974."
+      },
+      "limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1000,
+        "default": 100,
+        "description": "Most officials returned."
+      }
+    }
+  },
+  examples: [
+    { title: "President of Bordeaux Métropole", input: {"siren": "243300316"} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/api/urba/elus/presidents-epci",
+    pathParams: [],
+    query: {"siren": "siren", "departement": "departement", "limit": "limit"},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
 export const lawListCodes = defineFunction({
   name: "fod.law_list_codes",
   connector: "fod",
@@ -2246,6 +2624,136 @@ export const lawGetDecision = defineFunction({
     method: "GET",
     path: "/api/juris/decision/{decision_id}",
     pathParams: ["decision_id"],
+    query: {"max_chars": "max_chars"},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const lawListCollectiveAgreements = defineFunction({
+  name: "fod.law_list_collective_agreements",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "List French collective agreements of a branch (conventions collectives, KALI, DILA) by exact IDCC or by words of their title: {count, conventions: [{id, idcc, titre, etat, date_publi}]}, those in force first. etat: VIGUEUR_ETEN (extended, binds every employer of the branch), VIGUEUR_NON_ETEN (binds the signatories' members only), ABROGE... idcc null: a professional agreement outside a branch. Use it to resolve which agreement an IDCC is (from a payslip or a company record) before searching its articles. These are the sector's law; an agreement signed by one company is a company agreement, read apart.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "idcc": {
+        "type": "string",
+        "pattern": "^[0-9]{4}$",
+        "description": "IDCC of the agreement, 4 digits: 1486, 3090."
+      },
+      "query": {
+        "type": "string",
+        "minLength": 2,
+        "maxLength": 100,
+        "description": "Words found in the title, as written, case ignored: spectacle vivant, bureaux d'études. Not a full-text search."
+      },
+      "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}
+    }
+  },
+  examples: [
+    { title: "Agreement with IDCC 1486", input: {"idcc": "1486"} },
+    { title: "Agreements of the live performance sector", input: {"query": "spectacle vivant"} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/api/ccn/conventions",
+    pathParams: [],
+    query: {"idcc": "idcc", "query": "query", "limit": "limit"},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const lawSearchCollectiveAgreementArticles = defineFunction({
+  name: "fod.law_search_collective_agreement_articles",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "Full-text search in the articles of French collective agreements (KALI): articles, amendments (avenants), salary scales, extension orders: {count, articles: [{id, num, etat, date_debut, date_fin, date_signature, texte_titre, texte_nature, idcc, convention, extrait, permalien, lien_construit}]}. The query takes web-search syntax (\"quoted phrase\", OR, -excluded), French stemming applied. idcc restricts it to one agreement. Only versions in force by default. sort recent puts the latest effective date first: for a salary scale the latest amendment prevails, not the densest match. permalien is a verifiable FOD link; lien_construit a Légifrance address built by pattern, not guaranteed. Read an article whole by its id.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["query"],
+    "properties": {
+      "query": {
+        "type": "string",
+        "minLength": 2,
+        "description": "Search words, web-search syntax: \"phrase\", OR, -word."
+      },
+      "idcc": {
+        "type": "string",
+        "pattern": "^[0-9]{4}$",
+        "description": "IDCC of the agreement, 4 digits: 1486, 3090."
+      },
+      "en_vigueur": {
+        "type": "boolean",
+        "default": true,
+        "description": "false also searches past versions: salary scales exist in many."
+      },
+      "limit": {"type": "integer", "minimum": 1, "maximum": 50, "default": 20},
+      "sort": {"type": "string", "enum": ["relevance", "recent"], "default": "relevance"}
+    }
+  },
+  examples: [
+    { title: "Paid leave in the engineering consultancy agreement", input: {"query": "\"congés payés\"", "idcc": "1486"} },
+    { title: "Latest salary scale of private live performance", input: {"query": "salaires minima", "idcc": "3090", "sort": "recent", "limit": 5} },
+  ],
+  refusals: [],
+  request: {
+    method: "GET",
+    path: "/api/ccn/search",
+    pathParams: [],
+    query: {"query": "query", "idcc": "idcc", "en_vigueur": "en_vigueur", "limit": "limit", "sort": "sort"},
+    body: {},
+    headers: {},
+  },
+  cost: { per: "request" },
+})
+
+export const lawGetCollectiveAgreementArticle = defineFunction({
+  name: "fod.law_get_collective_agreement_article",
+  connector: "fod",
+  class: "read",
+  act: false,
+  description: "Get the full text of one collective-agreement article by its id, as the search returns it: {id, num, etat, date_debut, date_fin, date_signature, texte_id, texte_titre, texte_nature, texte, texte_chars, conteneur_id, idcc, convention, convention_etat, permalien, lien_construit, source_archive_url, source_archive_date}. texte_titre is the amendment or agreement that carries it, convention and idcc the agreement it belongs to: quote them with the article. The text is cut at max_chars (tronque true); texte_chars gives its whole length, permalien the whole article.",
+  schema: {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["kali_id"],
+    "properties": {
+      "kali_id": {
+        "type": "string",
+        "pattern": "^KALIARTI[0-9]{12}$",
+        "description": "Article id, as the search returns it: KALIARTI000005849443."
+      },
+      "max_chars": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 30000,
+        "description": "Cut the text at this length; 0 returns it whole."
+      }
+    }
+  },
+  examples: [
+    { title: "One article of a collective agreement", input: {"kali_id": "KALIARTI000005849443"} },
+  ],
+  refusals: [
+    { code: "collective_agreement_article_not_found", when: "the response carries error not_found", message: "No collective-agreement article with this id: take the id from a search result." },
+  ],
+  expect: [
+    { kind: "non_empty", refusal: "collective_agreement_article_not_found", path: "texte_chars" },
+  ],
+  request: {
+    method: "GET",
+    path: "/api/ccn/article/{kali_id}",
+    pathParams: ["kali_id"],
     query: {"max_chars": "max_chars"},
     body: {},
     headers: {},
@@ -3482,7 +3990,7 @@ export const connector = defineConnector({
   name: "fod",
   label: "France Open Data",
   namespace: "fod",
-  version: "1.9.0",
+  version: "1.10.0",
   apiVersion: "france-opendata-service a7cb702 (routes unversioned)",
   baseUrl: "https://data.oto.zone",
   auth: {"kind": "bearer", "token": "api_key"},
@@ -3543,12 +4051,25 @@ export const connector = defineConnector({
     urbanGetClayExposure,
     urbanListClassifiedFacilities,
     urbanListPublicServices,
+    urbanListCachedRegulations,
+    urbanGetRegulationText,
+    urbanListPriorityDistricts,
+    urbanListPriorityDistrictsNearPoint,
+    urbanGetLandAgencyIntervention,
+    urbanGetCommuneStatistics,
+    urbanGetIrisCensus,
+    urbanListCommuneIrisCensus,
+    urbanListMayors,
+    urbanListEpciPresidents,
     lawListCodes,
     lawGetArticle,
     lawSearchArticles,
     lawListArticleVersions,
     lawSearchCaseLaw,
     lawGetDecision,
+    lawListCollectiveAgreements,
+    lawSearchCollectiveAgreementArticles,
+    lawGetCollectiveAgreementArticle,
     taxSearchBofip,
     taxGetBofipDocument,
     complianceScreenAssetFreeze,
