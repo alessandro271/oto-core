@@ -43,7 +43,8 @@ EXPECTED_MEMBERS = {
 }
 EXPECTED_INIT = ("(self, client_id: Optional[str] = None, client_secret: Optional[str] = None, "
                  "refresh_token: Optional[str] = None, login_url: Optional[str] = None, "
-                 "on_refresh: Optional[Callable[[dict], NoneType]] = None)")
+                 "on_refresh: Optional[Callable[[dict], NoneType]] = None, *, "
+                 "session: Optional[requests.sessions.Session] = None)")
 
 #: Méthodes publiques que la description ne porte pas (motifs : `LEFT_OUT` de `tests/test_salesforce_description.py`).
 OUTSIDE_DESCRIPTION = {

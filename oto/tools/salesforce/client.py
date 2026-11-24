@@ -59,6 +59,8 @@ class SalesforceClient:
         refresh_token: Optional[str] = None,
         login_url: Optional[str] = None,
         on_refresh: Optional[Callable[[dict], None]] = None,
+        *,
+        session: Optional[requests.Session] = None,
     ):
         """Initialize the client.
 
@@ -81,6 +83,12 @@ class SalesforceClient:
         Client Apps), each exchange invalidates the previous token and returns a
         new one. Discarding it — what this class used to do — revokes the
         connection on first use.
+
+        `session`: the `requests.Session` every request goes out through — the
+        refresh-token exchange on `login_url` AND the API calls on the returned
+        `instance_url` — when the consumer supplies one (e.g. a session whose
+        transport checks each destination at connection time). Absent,
+        module-level `requests`, as before.
         """
         self.client_id = require(client_id, "SALESFORCE_CLIENT_ID")
         self.client_secret = require(client_secret, "SALESFORCE_CLIENT_SECRET")
@@ -90,6 +98,7 @@ class SalesforceClient:
         self._instance_url: Optional[str] = None
         self._token_expires_at: float = 0.0
         self._on_refresh = on_refresh
+        self._http = session if session is not None else requests
 
     # --- Auth ---
 
@@ -112,7 +121,7 @@ class SalesforceClient:
             self._access_token, self._instance_url, self._token_expires_at = cached
             return self._access_token, self._instance_url
 
-        resp = requests.post(
+        resp = self._http.post(
             f"{self.login_url}/services/oauth2/token",
             data={
                 "grant_type": "refresh_token",
@@ -196,7 +205,8 @@ class SalesforceClient:
         headers = {"Authorization": f"Bearer {token}"}
 
         for attempt in range(2):
-            resp = requests.request(method, url, headers=headers, timeout=_HTTP_TIMEOUT, **kwargs)
+            resp = self._http.request(method, url, headers=headers, timeout=_HTTP_TIMEOUT,
+                                      **kwargs)
 
             # Token expired — refresh once and retry
             if resp.status_code == 401 and attempt == 0:
