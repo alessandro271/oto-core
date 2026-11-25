@@ -1622,13 +1622,18 @@ class LemlistClient:
         """
         return self._request("GET", "call-statuses")
 
-    def get_call_transcript(self, transcript_url: str) -> Any:
+    def get_call_transcript(
+        self, transcript_url: str, *, session: Optional[requests.Session] = None,
+    ) -> Any:
         """Download the transcript a call's `transcriptUrl` points to, JSON
         `{text, utterances}`.
 
         The link is signed by lemlist and valid 24 hours. It is not a route of
         the API: it is fetched as given, WITHOUT the API key, which must not
-        leave for another host. https only; a file over
+        leave for another host. Its host comes from lemlist's answer, not from
+        this client, so a consumer can pass the `session` to fetch it through
+        (for instance one whose transport checks each destination); absent,
+        module-level `requests` is used. https only; a file over
         `CALL_TRANSCRIPT_MAX_BYTES`, or one that is not JSON, raises
         `ValueError`. An expired link answers an HTTP error, raised as
         `UpstreamHTTPError` with the link cut to its path (the signature never
@@ -1636,7 +1641,8 @@ class LemlistClient:
         """
         if not isinstance(transcript_url, str) or not transcript_url.lower().startswith("https://"):
             raise ValueError("a call transcript is read from its https transcriptUrl only")
-        response = requests.get(transcript_url, timeout=_HTTP_TIMEOUT, stream=True)
+        http = session if session is not None else requests
+        response = http.get(transcript_url, timeout=_HTTP_TIMEOUT, stream=True)
         try:
             raise_for_upstream(response, service="lemlist")
             chunks, size = [], 0

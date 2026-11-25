@@ -8,6 +8,7 @@ carry a structured error code an agent needs to see).
 from __future__ import annotations
 
 import pytest
+import requests
 
 from oto.tools.lemlist import client as lm
 from oto.tools.common.errors import UpstreamHTTPError
@@ -1423,6 +1424,41 @@ def test_get_call_transcript_reads_the_signed_link_without_the_key(monkeypatch):
     assert "headers" not in seen[0] and "auth" not in seen[0]
     assert seen[0]["timeout"] == lm._HTTP_TIMEOUT
     assert answer.closed
+
+
+def test_get_call_transcript_goes_through_the_given_session(monkeypatch):
+    monkeypatch.setattr(lm.requests, "get", lambda *a, **k: pytest.fail("module requests used"))
+    monkeypatch.setattr(lm.requests, "request", lambda *a, **k: pytest.fail("not an API route"))
+    answer = _Signed()
+
+    class _Recording(requests.Session):
+        def __init__(self):
+            super().__init__()
+            self.seen = []
+
+        def get(self, url, **kwargs):
+            self.seen.append({"url": url, **kwargs})
+            return answer
+
+        def request(self, *a, **k):
+            pytest.fail("only the transcript GET goes through the session")
+
+    session = _Recording()
+    url = "https://files.example.test/t/act_1.json?X-Signature=abc"
+    out = lm.LemlistClient(api_key="k").get_call_transcript(url, session=session)
+    assert out == {"text": "Hello", "utterances": []}
+    assert session.seen == [{"url": url, "timeout": lm._HTTP_TIMEOUT, "stream": True}]
+    assert answer.closed
+
+
+def test_get_call_transcript_with_a_session_keeps_the_https_check(monkeypatch):
+    class _Never(requests.Session):
+        def get(self, *a, **k):
+            pytest.fail("a non-https link must not be fetched")
+
+    with pytest.raises(ValueError, match="https"):
+        lm.LemlistClient(api_key="k").get_call_transcript(
+            "http://files.example.test/t.json", session=_Never())
 
 
 def test_get_call_transcript_refuses_a_link_that_is_not_https(monkeypatch):
